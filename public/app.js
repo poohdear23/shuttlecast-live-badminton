@@ -77,7 +77,7 @@
   }
   function updateCanvas() {
     const canvas = $('#broadcastCanvas'); const video = $('#cameraVideo'); if (!canvas || !video.videoWidth) return;
-    const width = 1280; const height = 720; canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); drawCover(ctx, video, width, height); drawScoreOverlay(ctx, width, height);
+    const width = 1920; const height = 1080; canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); drawCover(ctx, video, width, height); drawScoreOverlay(ctx, width, height);
   }
   function canvasLoop() { updateCanvas(); if (state.stream.camera) requestAnimationFrame(canvasLoop); }
 
@@ -86,7 +86,7 @@
     if (!window.isSecureContext) return toast('กล้องต้องใช้ HTTPS — กรุณาเปิดลิงก์ Preview โดยตรงใน Chrome หรือ Safari');
     if (!navigator.mediaDevices?.getUserMedia) return toast('หน้าต่าง Preview นี้ไม่อนุญาตกล้อง — เปิดลิงก์ในเบราว์เซอร์ภายนอกแทน');
     try {
-      state.stream.camera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true });
+      state.stream.camera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: true });
       const video = $('#cameraVideo'); video.srcObject = state.stream.camera; await video.play(); $('#stage').classList.add('camera-on'); $('#broadcastCanvas').style.display = 'block'; $('#cameraToggle').textContent = 'ปิดกล้อง'; $('#openCameraButton').textContent = 'กล้องพร้อมแล้ว'; setConnection('ready', 'กล้องพร้อม'); canvasLoop(); toast('เปิดกล้องแล้ว — พร้อมตรวจ scoreboard ก่อนขึ้นไลฟ์');
     } catch (error) {
       const message = error?.name === 'NotAllowedError' ? 'เบราว์เซอร์ยังไม่อนุญาตกล้อง/ไมค์ — กด Allow หรือเปิดลิงก์ใน Chrome/Safari โดยตรง' : error?.name === 'NotFoundError' ? 'ไม่พบกล้องหรือไมโครโฟนบนอุปกรณ์' : error?.name === 'NotReadableError' ? 'กล้องกำลังถูกใช้งานโดยแอปอื่น' : 'เปิดกล้องไม่ได้ — ตรวจสิทธิ์กล้องและไมโครโฟนในเบราว์เซอร์';
@@ -129,7 +129,7 @@
       const canvas = $('#broadcastCanvas'); const composed = canvas.captureStream(30); state.stream.camera.getAudioTracks().forEach(track => { if (state.stream.micEnabled) composed.addTrack(track); });
       const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' : 'video/webm';
       state.stream.canvas = composed; state.stream.sessionId = sessionId; state.stream.running = true; state.stream.stopping = false; state.stream.uploadQueue = Promise.resolve();
-      const recorder = new MediaRecorder(composed, { mimeType, videoBitsPerSecond: 3200000 }); state.stream.recorder = recorder;
+      const recorder = new MediaRecorder(composed, { mimeType, videoBitsPerSecond: 6000000, audioBitsPerSecond: 160000 }); state.stream.recorder = recorder;
       recorder.ondataavailable = (event) => {
         if (!event.data.size) return;
         state.stream.uploadQueue = state.stream.uploadQueue.then(() => uploadChunk(sessionId, event.data)).catch(() => toast('ส่งสัญญาณสะดุด — กำลังตรวจการเชื่อมต่อ'));

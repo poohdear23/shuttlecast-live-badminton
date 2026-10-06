@@ -61,9 +61,9 @@ function startRelay(targets) {
     '-hide_banner', '-loglevel', 'warning',
     '-f', 'webm', '-i', 'pipe:0',
     '-map', '0:v:0', '-map', '0:a:0?',
-    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency',
-    '-pix_fmt', 'yuv420p', '-g', '60', '-keyint_min', '60',
-    '-c:a', 'aac', '-ar', '44100', '-b:a', '128k'
+    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-b:v', '6000k', '-maxrate', '6000k', '-bufsize', '12000k',
+    '-profile:v', 'high', '-level:v', '4.1', '-pix_fmt', 'yuv420p', '-r', '30', '-g', '60', '-keyint_min', '60',
+    '-c:a', 'aac', '-ar', '44100', '-b:a', '160k'
   ];
   if (targets.length === 1) args.push('-flvflags', 'no_duration_filesize', '-rtmp_live', 'live', '-f', 'flv', targets[0]);
   else args.push('-f', 'tee', makeTeeOutput(targets));
