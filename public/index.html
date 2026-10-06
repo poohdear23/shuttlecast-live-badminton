@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="description" content="RallyCast ถ่ายทอดสดแบดมินตันพร้อม scoreboard">
+  <title>RallyCast — Live Badminton</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true"><span>R</span><i></i></div>
+        <div>
+          <p class="eyebrow">BADMINTON BROADCAST</p>
+          <h1>RallyCast</h1>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span class="connection-dot" id="connectionDot"></span>
+        <span class="connection-label" id="connectionLabel">พร้อมตั้งค่า</span>
+        <button class="icon-button" id="helpButton" aria-label="เปิดคำแนะนำ">?</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="view active" id="setupView" aria-labelledby="setupTitle">
+        <div class="hero-copy">
+          <div class="live-kicker"><span class="pulse-dot"></span> LIVE CONTROL ROOM</div>
+          <h2 id="setupTitle">ถ่ายทอดทุกแต้ม<br><em>ให้คนดูเห็นพร้อมกัน</em></h2>
+          <p>กล้องสนามหนึ่งตัว คะแนนหนึ่งจอ และปลายทางไลฟ์ได้ถึงสองแพลตฟอร์ม</p>
+        </div>
+
+        <div class="setup-layout">
+          <form class="panel setup-panel" id="setupForm">
+            <div class="panel-heading">
+              <div>
+                <p class="section-label">01 / MATCH SETUP</p>
+                <h3>ตั้งค่าคู่แข่ง</h3>
+              </div>
+              <span class="step-badge">1/2</span>
+            </div>
+
+            <label class="field-label" for="matchTitle">ชื่อรายการ <span>OPTIONAL</span></label>
+            <input class="text-input" id="matchTitle" maxlength="60" placeholder="เช่น รอบชิงชนะเลิศ — สนาม 1" value="Rally Night • Court 1">
+
+            <div class="field-label row-label"><span>รูปแบบการแข่งขัน</span><span>FORMAT</span></div>
+            <div class="segmented" role="group" aria-label="รูปแบบการแข่งขัน">
+              <button type="button" class="segment active" data-format="singles">เดี่ยว</button>
+              <button type="button" class="segment" data-format="doubles">คู่</button>
+            </div>
+
+            <div class="players-grid">
+              <div class="player-input side-a">
+                <div class="team-tag"><span class="team-dot"></span> SIDE A</div>
+                <label class="field-label" for="sideA">ผู้เล่น / ทีม A</label>
+                <input class="text-input" id="sideA" maxlength="40" placeholder="เช่น K. Axelsen" value="ทีมฟ้า">
+              </div>
+              <div class="player-input side-b">
+                <div class="team-tag"><span class="team-dot"></span> SIDE B</div>
+                <label class="field-label" for="sideB">ผู้เล่น / ทีม B</label>
+                <input class="text-input" id="sideB" maxlength="40" placeholder="เช่น C. Marin" value="ทีมแดง">
+              </div>
+            </div>
+
+            <div class="setup-note"><span class="note-icon">i</span><span>แก้ชื่อหรือคะแนนระหว่างไลฟ์ได้ทุกเมื่อ</span></div>
+            <button class="primary-button full" type="submit"><span>สร้างห้องควบคุม</span><strong>→</strong></button>
+          </form>
+
+          <aside class="panel preview-card">
+            <div class="preview-card-top"><span class="section-label">ON AIR PREVIEW</span><span class="mini-live"><span class="pulse-dot"></span> READY</span></div>
+            <div class="mock-court">
+              <div class="court-lines"></div>
+              <div class="mock-shuttle">✦</div>
+              <div class="mock-score">
+                <div><span id="previewA">ทีมฟ้า</span><b>00</b></div>
+                <div><span id="previewB">ทีมแดง</span><b>00</b></div>
+              </div>
+              <div class="mock-camera-label">CAM 01 • PREVIEW</div>
+            </div>
+            <div class="preview-caption"><span>Scoreboard จะติดไปกับภาพที่ส่งจริง</span><span class="arrow">↗</span></div>
+          </aside>
+        </div>
+
+        <div class="setup-footer"><span>RALLYCAST / 01</span><span>สำหรับผู้จัดแข่งและสนามอิสระ</span></div>
+      </section>
+
+      <section class="view" id="studioView" aria-labelledby="studioTitle">
+        <div class="studio-header">
+          <div>
+            <p class="section-label">LIVE CONTROL ROOM / <span id="studioTitle">RALLY NIGHT</span></p>
+            <div class="studio-title-row"><h2>สนามพร้อมแล้ว</h2><span class="status-chip" id="liveChip"><span class="pulse-dot"></span> OFFLINE</span></div>
+          </div>
+          <button class="ghost-button" id="backToSetup">แก้ค่าการแข่ง</button>
+        </div>
+
+        <div class="studio-grid">
+          <section class="stage-wrap">
+            <div class="stage" id="stage">
+              <video id="cameraVideo" autoplay playsinline muted></video>
+              <canvas id="broadcastCanvas" aria-hidden="true"></canvas>
+              <div class="camera-placeholder" id="cameraPlaceholder">
+                <div class="camera-icon">◉</div>
+                <h3>ยังไม่ได้เปิดกล้อง</h3>
+                <p>เปิดกล้องเพื่อดูภาพสนามและ overlay ก่อนขึ้นไลฟ์</p>
+                <button class="secondary-button" id="openCameraButton">เปิดกล้อง</button>
+              </div>
+              <div class="stage-overlay-top"><span class="on-air-label" id="onAirLabel">PREVIEW</span><span id="resolutionLabel">16:9 • 720p</span></div>
+            </div>
+            <div class="stage-toolbar">
+              <button class="secondary-button compact" id="cameraToggle">เปิดกล้อง</button>
+              <button class="secondary-button compact" id="micToggle">ไมค์: เปิด</button>
+              <span class="toolbar-hint">ภาพ scoreboard จะถูกวาดลงในวิดีโอ</span>
+            </div>
+          </section>
+
+          <aside class="control-rail">
+            <section class="panel score-panel">
+              <div class="panel-heading compact-heading"><div><p class="section-label">SCOREBOARD</p><h3 id="scoreTitle">GAME 1 / BEST OF 3</h3></div><button class="dots-button" id="renameButton" aria-label="แก้ชื่อ">•••</button></div>
+              <div class="score-row">
+                <div class="score-side"><span class="side-label side-label-a">SIDE A</span><strong id="scoreNameA">ทีมฟ้า</strong><button class="score-button plus-a" id="addA">+1</button><button class="minus-button" id="minusA">−</button></div>
+                <div class="score-number" id="scoreA">0</div>
+                <div class="score-number right-score" id="scoreB">0</div>
+                <div class="score-side align-right"><span class="side-label side-label-b">SIDE B</span><strong id="scoreNameB">ทีมแดง</strong><button class="score-button plus-b" id="addB">+1</button><button class="minus-button" id="minusB">−</button></div>
+              </div>
+              <div class="game-strip"><span id="gameWinsA">0</span><i></i><span>เกมที่ <b id="gameNumber">1</b></span><i></i><span id="gameWinsB">0</span></div>
+              <div class="score-actions"><button class="text-button" id="undoButton">↶ ย้อนแต้ม</button><button class="text-button danger-text" id="resetButton">รีเซ็ตเกม</button><button class="text-button" id="nextGameButton">เกมถัดไป →</button></div>
+            </section>
+
+            <section class="panel destinations-panel">
+              <div class="panel-heading compact-heading"><div><p class="section-label">DESTINATIONS</p><h3>ปลายทางไลฟ์</h3></div><span class="secure-badge">🔒 SESSION ONLY</span></div>
+              <div class="destination-row"><div class="platform-icon facebook">f</div><div class="dest-copy"><strong>Facebook Live</strong><span id="facebookState">ยังไม่ตั้งค่า</span></div><span class="state-light" id="facebookLight"></span></div>
+              <div class="destination-row"><div class="platform-icon youtube">▶</div><div class="dest-copy"><strong>YouTube Live</strong><span id="youtubeState">ยังไม่ตั้งค่า</span></div><span class="state-light" id="youtubeLight"></span></div>
+              <button class="secondary-button full" id="destinationButton">ตั้งค่า Stream Key</button>
+            </section>
+
+            <button class="primary-button live-button" id="startLiveButton"><span class="button-live-dot"></span><span id="startLiveLabel">เริ่มถ่ายทอดสด</span><strong>↗</strong></button>
+            <p class="privacy-note">Stream Key จะไม่ถูกบันทึกในเครื่อง และจะถูกล้างเมื่อหยุดสตรีม</p>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <div class="modal-backdrop" id="destinationModal" hidden>
+      <section class="modal panel" role="dialog" aria-modal="true" aria-labelledby="destinationTitle">
+        <div class="modal-heading"><div><p class="section-label">STREAM OUTPUT</p><h3 id="destinationTitle">ตั้งค่าปลายทาง</h3></div><button class="close-button" id="closeModal">×</button></div>
+        <p class="modal-intro">ใส่ Stream Key จาก Live Producer ของแต่ละแพลตฟอร์ม อย่างน้อยหนึ่งปลายทางเพื่อเริ่มส่งจริง</p>
+        <div class="destination-form-card facebook-card"><div class="platform-heading"><span class="platform-icon facebook">f</span><strong>Facebook Live</strong><label class="switch"><input type="checkbox" id="facebookEnabled" checked><span></span></label></div><label class="field-label" for="facebookUrl">RTMP URL</label><input class="text-input mono" id="facebookUrl" value="rtmps://live-api-s.facebook.com:443/rtmp/" autocomplete="off"><label class="field-label" for="facebookKey">Stream Key</label><input class="text-input mono secret-input" id="facebookKey" type="password" placeholder="วาง Stream Key ที่นี่" autocomplete="off"></div>
+        <div class="destination-form-card youtube-card"><div class="platform-heading"><span class="platform-icon youtube">▶</span><strong>YouTube Live</strong><label class="switch"><input type="checkbox" id="youtubeEnabled" checked><span></span></label></div><label class="field-label" for="youtubeUrl">RTMP URL</label><input class="text-input mono" id="youtubeUrl" value="rtmps://a.rtmp.youtube.com/live2/" autocomplete="off"><label class="field-label" for="youtubeKey">Stream Key</label><input class="text-input mono secret-input" id="youtubeKey" type="password" placeholder="วาง Stream Key ที่นี่" autocomplete="off"></div>
+        <div class="modal-actions"><button class="secondary-button" id="cancelModal">ยกเลิก</button><button class="primary-button" id="saveDestinations">บันทึกปลายทาง</button></div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <footer class="site-footer"><span>RALLYCAST <b>•</b> LIVE BADMINTON</span><span>v0.1 prototype</span></footer>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

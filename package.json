@@ -1,0 +1,11 @@
+{
+  "name": "rallycast-live-badminton",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mobile-first badminton livestream control room with simultaneous Facebook and YouTube RTMP relay.",
+  "packageManager": "pnpm@11.0.0",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  }
+}
