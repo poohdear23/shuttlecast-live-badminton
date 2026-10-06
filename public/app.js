@@ -101,6 +101,8 @@
     const youtube = $('#youtubeEnabled').checked && $('#youtubeKey').value.trim() ? `${$('#youtubeUrl').value.trim()}${$('#youtubeKey').value.trim()}` : '';
     return { facebook, youtube };
   }
+  function persistDestinations() { localStorage.setItem('rallycast.destinations', JSON.stringify({ facebookEnabled: $('#facebookEnabled').checked, facebookUrl: $('#facebookUrl').value.trim(), facebookKey: $('#facebookKey').value.trim(), youtubeEnabled: $('#youtubeEnabled').checked, youtubeUrl: $('#youtubeUrl').value.trim(), youtubeKey: $('#youtubeKey').value.trim() })); }
+  function loadDestinations() { try { const saved = JSON.parse(localStorage.getItem('rallycast.destinations')); if (!saved) return; if (saved.facebookUrl) $('#facebookUrl').value = saved.facebookUrl; if (saved.facebookKey) $('#facebookKey').value = saved.facebookKey; if (saved.youtubeUrl) $('#youtubeUrl').value = saved.youtubeUrl; if (saved.youtubeKey) $('#youtubeKey').value = saved.youtubeKey; if (typeof saved.facebookEnabled === 'boolean') $('#facebookEnabled').checked = saved.facebookEnabled; if (typeof saved.youtubeEnabled === 'boolean') $('#youtubeEnabled').checked = saved.youtubeEnabled; state.destinations = destinationPayload(); refreshDestinationUI(); } catch {} }
   function refreshDestinationUI() {
     const fb = Boolean(state.destinations.facebook); const yt = Boolean(state.destinations.youtube);
     setText('#facebookState', fb ? 'พร้อมส่งสัญญาณ' : 'ยังไม่ตั้งค่า'); setText('#youtubeState', yt ? 'พร้อมส่งสัญญาณ' : 'ยังไม่ตั้งค่า');
@@ -111,7 +113,7 @@
   function closeDestinations() { $('#destinationModal').hidden = true; }
   function saveDestinations() {
     const payload = destinationPayload(); if (!payload.facebook && !payload.youtube) return toast('กรุณาใส่ Stream Key อย่างน้อยหนึ่งปลายทาง');
-    state.destinations = payload; refreshDestinationUI(); closeDestinations(); toast('บันทึกปลายทางในเซสชันนี้แล้ว');
+    state.destinations = payload; persistDestinations(); refreshDestinationUI(); closeDestinations(); toast('บันทึกปลายทางไว้ในอุปกรณ์นี้แล้ว');
   }
 
   async function uploadChunk(sessionId, blob) { const response = await fetch(`/api/stream/${sessionId}/chunk`, { method: 'POST', body: blob, headers: { 'Content-Type': 'video/webm' } }); if (!response.ok) throw new Error('chunk_upload_failed'); }
@@ -155,11 +157,11 @@
     if (recorder && recorder.state !== 'inactive') await new Promise(resolve => { recorder.addEventListener('stop', resolve, { once: true }); recorder.stop(); });
     await state.stream.uploadQueue.catch(() => {});
     state.stream.canvas?.getTracks().forEach(track => track.stop()); state.stream.recorder = null; state.stream.canvas = null;
-    await fetch(`/api/stream/${sessionId}/stop`, { method: 'POST' }).catch(() => {}); state.stream.sessionId = null; state.stream.stopping = false; setLiveUi(false); clearSecretFields(); state.destinations = { facebook: null, youtube: null }; refreshDestinationUI(); toast('หยุดถ่ายทอดสดและล้าง Stream Key แล้ว');
+    await fetch(`/api/stream/${sessionId}/stop`, { method: 'POST' }).catch(() => {}); state.stream.sessionId = null; state.stream.stopping = false; setLiveUi(false); refreshDestinationUI(); toast('หยุดถ่ายทอดสดแล้ว — ค่า Stream Key ยังถูกจำไว้');
   }
   function setLiveUi(isLive) { $('#liveChip').classList.toggle('live', isLive); if ($('#onAirLabel')) $('#onAirLabel').textContent = isLive ? 'ON AIR' : 'PREVIEW'; setText('#liveChip', isLive ? '● LIVE' : '○ OFFLINE'); $('#startLiveButton').classList.toggle('active', isLive); setText('#startLiveLabel', isLive ? 'หยุดถ่ายทอดสด' : 'เริ่มถ่ายทอดสด'); setConnection(isLive ? 'live' : 'ready', isLive ? 'กำลังถ่ายทอดสด' : 'กล้องพร้อม'); }
 
-  loadMatch(); $('#matchTitle').value = state.matchTitle || 'Rally Night • Court 1'; $('#sideA').value = state.sideA || 'ทีมฟ้า'; $('#sideB').value = state.sideB || 'ทีมแดง'; $('#teamColorA').value = state.teamColorA || '#64f1d2'; $('#teamColorB').value = state.teamColorB || '#ff7f67'; $('#matchGames').value = String(state.matchGames || 3); $('#targetPoints').value = String(state.targetPoints || 21); $('#capPoints').value = String(state.capPoints || 30); $('#winByTwo').checked = state.winByTwo !== false; document.querySelectorAll('[data-format]').forEach(item => item.classList.toggle('active', item.dataset.format === state.format)); updateSetupPreview();
+  loadMatch(); loadDestinations(); $('#matchTitle').value = state.matchTitle || 'Rally Night • Court 1'; $('#sideA').value = state.sideA || 'ทีมฟ้า'; $('#sideB').value = state.sideB || 'ทีมแดง'; $('#teamColorA').value = state.teamColorA || '#64f1d2'; $('#teamColorB').value = state.teamColorB || '#ff7f67'; $('#matchGames').value = String(state.matchGames || 3); $('#targetPoints').value = String(state.targetPoints || 21); $('#capPoints').value = String(state.capPoints || 30); $('#winByTwo').checked = state.winByTwo !== false; document.querySelectorAll('[data-format]').forEach(item => item.classList.toggle('active', item.dataset.format === state.format)); updateSetupPreview();
   const syncCapRule = () => { const target = Math.max(1, Math.min(30, Number($('#targetPoints').value) || 21)); const cap = Math.max(target, Math.min(99, Number($('#capPoints').value) || 30)); $('#targetPoints').value = target; $('#capPoints').value = cap; };
   syncCapRule(); $('#targetPoints').addEventListener('change', syncCapRule); $('#capPoints').addEventListener('change', syncCapRule);
   document.querySelectorAll('[data-format]').forEach(button => button.addEventListener('click', () => { state.format = button.dataset.format; document.querySelectorAll('[data-format]').forEach(item => item.classList.toggle('active', item === button)); }));
