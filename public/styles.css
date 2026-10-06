@@ -137,7 +137,7 @@ main { padding: 44px 0 20px; }
 .camera-placeholder h3 { margin: 0 0 8px; font-size: 18px; }
 .camera-placeholder p { color: var(--muted); font-size: 12px; margin: 0 auto 18px; max-width: 270px; line-height: 1.6; }
 .stage-overlay-top { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; justify-content: space-between; color: rgba(255,255,255,.7); font: 700 9px var(--mono); letter-spacing: .08em; pointer-events: none; }
-.on-air-label { color: var(--mint); background: rgba(4,10,16,.75); border: 1px solid rgba(100,241,210,.26); padding: 7px 9px; border-radius: 6px; }
+.on-air-label { order: 2; color: var(--mint); background: rgba(4,10,16,.75); border: 1px solid rgba(100,241,210,.26); padding: 7px 9px; border-radius: 6px; }
 .stage-toolbar { justify-content: space-between; gap: 9px; padding: 12px 2px 0; }
 .compact { min-height: 36px; font-size: 11px; padding: 0 12px; }
 .toolbar-hint { margin-left: auto; color: var(--muted-2); font-size: 11px; text-align: right; }
