@@ -1,7 +1,7 @@
 (() => {
   const $ = (selector) => document.querySelector(selector);
   const state = {
-    view: 'setup', format: 'singles', matchTitle: 'Rally Night • Court 1', sideA: 'ทีมฟ้า', sideB: 'ทีมแดง',
+    view: 'setup', format: 'singles', matchTitle: 'Rally Night • Court 1', sideA: 'ทีมฟ้า', sideB: 'ทีมแดง', matchGames: 3, targetPoints: 21, capPoints: 30, winByTwo: true,
     scoreA: 0, scoreB: 0, winsA: 0, winsB: 0, game: 1, history: [],
     stream: { camera: null, canvas: null, recorder: null, sessionId: null, running: false, stopping: false, uploadQueue: Promise.resolve(), micEnabled: true },
     destinations: { facebook: null, youtube: null }
@@ -13,32 +13,38 @@
   };
   const setConnection = (kind, label) => { $('#connectionDot').className = `connection-dot ${kind || ''}`; $('#connectionLabel').textContent = label; };
   const setText = (id, value) => { const el = $(id); if (el) el.textContent = value; };
-  const persistMatch = () => localStorage.setItem('rallycast.match', JSON.stringify({ format: state.format, matchTitle: state.matchTitle, sideA: state.sideA, sideB: state.sideB }));
+  const persistMatch = () => localStorage.setItem('rallycast.match', JSON.stringify({ format: state.format, matchTitle: state.matchTitle, sideA: state.sideA, sideB: state.sideB, matchGames: state.matchGames, targetPoints: state.targetPoints, capPoints: state.capPoints, winByTwo: state.winByTwo }));
   const loadMatch = () => { try { const saved = JSON.parse(localStorage.getItem('rallycast.match')); if (saved) Object.assign(state, saved); } catch {} };
 
   function updateSetupPreview() { setText('#previewA', $('#sideA').value || 'ฝั่ง A'); setText('#previewB', $('#sideB').value || 'ฝั่ง B'); }
   function applySetupValues() {
     state.matchTitle = $('#matchTitle').value.trim() || 'Rally Night • Court 1';
     state.sideA = $('#sideA').value.trim() || 'ฝั่ง A'; state.sideB = $('#sideB').value.trim() || 'ฝั่ง B'; persistMatch();
-    setText('#scoreNameA', state.sideA); setText('#scoreNameB', state.sideB); setText('#studioTitle', state.matchTitle);
-    setText('#scoreTitle', `GAME ${state.game} / BEST OF 3`); updateCanvas();
+    state.matchGames = Number($('#matchGames').value); state.targetPoints = Number($('#targetPoints').value); state.capPoints = Number($('#capPoints').value); state.winByTwo = $('#winByTwo').checked; persistMatch();
+    setText('#scoreNameA', state.sideA); setText('#scoreNameB', state.sideB); setText('#studioTitle', state.matchTitle); renderScore();
   }
   function showView(view) { state.view = view; $('#setupView').classList.toggle('active', view === 'setup'); $('#studioView').classList.toggle('active', view === 'studio'); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 
   function renderScore() {
-    setText('#scoreA', state.scoreA); setText('#scoreB', state.scoreB); setText('#gameWinsA', state.winsA); setText('#gameWinsB', state.winsB); setText('#gameNumber', state.game); setText('#scoreTitle', `GAME ${state.game} / BEST OF 3`);
+    setText('#scoreA', state.scoreA); setText('#scoreB', state.scoreB); setText('#gameWinsA', state.winsA); setText('#gameWinsB', state.winsB); setText('#gameNumber', state.game); setText('#scoreTitle', `GAME ${state.game} / ${state.matchGames === 1 ? 'SINGLE GAME' : `BEST OF ${state.matchGames}`}`); setText('#ruleSummary', `${state.targetPoints} แต้ม • ${state.winByTwo ? 'นำ 2' : 'แต้มถึงก่อน'} • สูงสุด ${state.capPoints}`); setText('#nextGameButton', state.matchGames === 1 ? 'จบเกม →' : 'เกมถัดไป →');
     updateCanvas();
   }
   function snapshot() { state.history.push({ scoreA: state.scoreA, scoreB: state.scoreB, winsA: state.winsA, winsB: state.winsB, game: state.game }); if (state.history.length > 30) state.history.shift(); }
-  function addPoint(side) { snapshot(); if (side === 'A') state.scoreA = Math.min(30, state.scoreA + 1); else state.scoreB = Math.min(30, state.scoreB + 1); renderScore(); }
+  function addPoint(side) { snapshot(); if (side === 'A') state.scoreA = Math.min(state.capPoints, state.scoreA + 1); else state.scoreB = Math.min(state.capPoints, state.scoreB + 1); renderScore(); }
   function subtractPoint(side) { snapshot(); if (side === 'A') state.scoreA = Math.max(0, state.scoreA - 1); else state.scoreB = Math.max(0, state.scoreB - 1); renderScore(); }
   function undo() { const last = state.history.pop(); if (!last) return toast('ยังไม่มีแต้มให้ย้อนกลับ'); Object.assign(state, last); renderScore(); toast('ย้อนแต้มล่าสุดแล้ว'); }
   function resetGame() { snapshot(); state.scoreA = 0; state.scoreB = 0; renderScore(); toast('รีเซ็ตคะแนนเกมนี้แล้ว'); }
   function nextGame() {
-    if (state.game >= 3 || state.winsA >= 2 || state.winsB >= 2) return toast('แมตช์นี้ครบ Best of 3 แล้ว');
+    const reachedTarget = state.scoreA >= state.targetPoints || state.scoreB >= state.targetPoints;
+    const atCap = state.scoreA >= state.capPoints || state.scoreB >= state.capPoints;
+    const complete = reachedTarget && (!state.winByTwo || Math.abs(state.scoreA - state.scoreB) >= 2) || atCap;
+    if (!complete) return toast(`เกมยังไม่จบ: ต้องถึง ${state.targetPoints} แต้มและนำ ${state.winByTwo ? '2 แต้ม' : 'ไม่ต้องนำ'}`);
+    if (state.matchGames !== 1 && (state.game >= state.matchGames || state.winsA >= Math.ceil(state.matchGames / 2) || state.winsB >= Math.ceil(state.matchGames / 2))) return toast('แมตช์นี้ครบตามจำนวนเกมที่ตั้งไว้แล้ว');
     const winner = state.scoreA > state.scoreB ? 'A' : state.scoreB > state.scoreA ? 'B' : null;
+    if (!winner) return toast('คะแนนเท่ากัน ยังบันทึกผู้ชนะไม่ได้');
     snapshot(); if (winner === 'A') state.winsA += 1; if (winner === 'B') state.winsB += 1;
-    const previousGame = state.game; state.scoreA = 0; state.scoreB = 0; state.game = Math.min(3, state.game + 1); renderScore(); toast(winner ? `บันทึกผู้ชนะเกม ${previousGame} แล้ว` : 'เริ่มเกมถัดไปแล้ว');
+    if (state.matchGames === 1) { renderScore(); return toast(`บันทึกผลการแข่งขัน: ${winner === 'A' ? state.sideA : state.sideB} ชนะ`); }
+    const previousGame = state.game; state.scoreA = 0; state.scoreB = 0; state.game = Math.min(state.matchGames, state.game + 1); renderScore(); toast(winner ? `บันทึกผู้ชนะเกม ${previousGame} แล้ว` : 'เริ่มเกมถัดไปแล้ว');
   }
 
   function drawCover(ctx, video, width, height) {
@@ -56,7 +62,7 @@
     ctx.font = `800 ${13 * scale}px system-ui`; ctx.fillStyle = '#64f1d2'; ctx.fillText('RALLYCAST  •  LIVE', x + 18 * scale, y + 25 * scale);
     ctx.font = `700 ${18 * scale}px system-ui`; ctx.fillStyle = '#f5f8ff'; ctx.fillText(state.sideA, x + 18 * scale, y + 57 * scale); ctx.fillText(state.sideB, x + 18 * scale, y + 91 * scale);
     ctx.font = `800 ${31 * scale}px monospace`; ctx.fillStyle = '#64f1d2'; ctx.fillText(String(state.scoreA).padStart(2, '0'), x + boxW - 118 * scale, y + 61 * scale); ctx.fillStyle = '#ff7f67'; ctx.fillText(String(state.scoreB).padStart(2, '0'), x + boxW - 118 * scale, y + 95 * scale);
-    ctx.font = `800 ${12 * scale}px monospace`; ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillText(`GAME ${state.game}  •  ${state.winsA}-${state.winsB}`, x + boxW - 94 * scale, y + 25 * scale);
+    ctx.font = `800 ${12 * scale}px monospace`; ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillText(`GAME ${state.game}/${state.matchGames}  •  ${state.winsA}-${state.winsB}`, x + boxW - 94 * scale, y + 25 * scale);
   }
   function updateCanvas() {
     const canvas = $('#broadcastCanvas'); const video = $('#cameraVideo'); if (!canvas || !video.videoWidth) return;
@@ -132,7 +138,9 @@
   }
   function setLiveUi(isLive) { $('#liveChip').classList.toggle('live', isLive); $('#onAirLabel').textContent = isLive ? 'ON AIR' : 'PREVIEW'; setText('#liveChip', isLive ? '● LIVE' : '○ OFFLINE'); $('#startLiveButton').classList.toggle('active', isLive); setText('#startLiveLabel', isLive ? 'หยุดถ่ายทอดสด' : 'เริ่มถ่ายทอดสด'); setConnection(isLive ? 'live' : 'ready', isLive ? 'กำลังถ่ายทอดสด' : 'กล้องพร้อม'); }
 
-  loadMatch(); $('#matchTitle').value = state.matchTitle || 'Rally Night • Court 1'; $('#sideA').value = state.sideA || 'ทีมฟ้า'; $('#sideB').value = state.sideB || 'ทีมแดง'; document.querySelectorAll('[data-format]').forEach(item => item.classList.toggle('active', item.dataset.format === state.format)); updateSetupPreview();
+  loadMatch(); $('#matchTitle').value = state.matchTitle || 'Rally Night • Court 1'; $('#sideA').value = state.sideA || 'ทีมฟ้า'; $('#sideB').value = state.sideB || 'ทีมแดง'; $('#matchGames').value = String(state.matchGames || 3); $('#targetPoints').value = String(state.targetPoints || 21); $('#capPoints').value = String(state.capPoints || 30); $('#winByTwo').checked = state.winByTwo !== false; document.querySelectorAll('[data-format]').forEach(item => item.classList.toggle('active', item.dataset.format === state.format)); updateSetupPreview();
+  const syncCapRule = () => { const cap15 = $('#capPoints').querySelector('option[value="15"]'); cap15.disabled = Number($('#targetPoints').value) > 15; if (cap15.disabled && $('#capPoints').value === '15') $('#capPoints').value = '30'; };
+  syncCapRule(); $('#targetPoints').addEventListener('change', syncCapRule);
   document.querySelectorAll('[data-format]').forEach(button => button.addEventListener('click', () => { state.format = button.dataset.format; document.querySelectorAll('[data-format]').forEach(item => item.classList.toggle('active', item === button)); }));
   $('#sideA').addEventListener('input', updateSetupPreview); $('#sideB').addEventListener('input', updateSetupPreview);
   $('#setupForm').addEventListener('submit', (event) => { event.preventDefault(); applySetupValues(); showView('studio'); setConnection('ready', 'พร้อมถ่ายทอด'); });

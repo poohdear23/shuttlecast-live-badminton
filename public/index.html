@@ -52,6 +52,14 @@
               <button type="button" class="segment" data-format="doubles">คู่</button>
             </div>
 
+            <div class="field-label row-label"><span>จำนวนเกมและกติกาคะแนน</span><span>RULES</span></div>
+            <div class="rules-grid">
+              <label class="rule-field"><span>รูปแบบเกม</span><select class="text-input" id="matchGames"><option value="1">แข่ง 1 เกม</option><option value="3" selected>Best of 3 เกม</option></select></label>
+              <label class="rule-field"><span>คะแนนต่อเกม</span><select class="text-input" id="targetPoints"><option value="11">11 แต้ม</option><option value="21" selected>21 แต้ม</option></select></label>
+              <label class="rule-field"><span>แต้มสูงสุด</span><select class="text-input" id="capPoints"><option value="15">สูงสุด 15</option><option value="30" selected>สูงสุด 30</option></select></label>
+              <label class="rule-check"><input type="checkbox" id="winByTwo" checked><span>ต้องนำ 2 แต้ม<br><small>ยกเว้นเมื่อถึงแต้มสูงสุด</small></span></label>
+            </div>
+
             <div class="players-grid">
               <div class="player-input side-a">
                 <div class="team-tag"><span class="team-dot"></span> SIDE A</div>
@@ -118,7 +126,7 @@
 
           <aside class="control-rail">
             <section class="panel score-panel">
-              <div class="panel-heading compact-heading"><div><p class="section-label">SCOREBOARD</p><h3 id="scoreTitle">GAME 1 / BEST OF 3</h3></div><button class="dots-button" id="renameButton" aria-label="แก้ชื่อ">•••</button></div>
+              <div class="panel-heading compact-heading"><div><p class="section-label">SCOREBOARD</p><h3 id="scoreTitle">GAME 1 / BEST OF 3</h3><p class="rule-summary" id="ruleSummary">21 แต้ม • นำ 2 • สูงสุด 30</p></div><button class="dots-button" id="renameButton" aria-label="แก้ชื่อ">•••</button></div>
               <div class="score-row">
                 <div class="score-side"><span class="side-label side-label-a">SIDE A</span><strong id="scoreNameA">ทีมฟ้า</strong><button class="score-button plus-a" id="addA">+1</button><button class="minus-button" id="minusA">−</button></div>
                 <div class="score-number" id="scoreA">0</div>
