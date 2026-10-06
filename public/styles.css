@@ -136,9 +136,6 @@ main { padding: 44px 0 20px; }
 .camera-icon { width: 56px; height: 56px; border-radius: 17px; display: grid; place-items: center; margin: 0 auto 16px; color: var(--mint); font-size: 30px; border: 1px solid rgba(100,241,210,.3); background: rgba(100,241,210,.08); }
 .camera-placeholder h3 { margin: 0 0 8px; font-size: 18px; }
 .camera-placeholder p { color: var(--muted); font-size: 12px; margin: 0 auto 18px; max-width: 270px; line-height: 1.6; }
-.stage-overlay-top { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; justify-content: flex-end; color: rgba(255,255,255,.7); font: 700 9px var(--mono); letter-spacing: .08em; pointer-events: none; }
-.on-air-label { order: 2; color: var(--mint); background: transparent; border: 0; padding: 0; border-radius: 0; }
-#resolutionLabel { position: absolute; left: 14px; bottom: 14px; z-index: 2; color: rgba(255,255,255,.75); background: transparent; border: 0; padding: 0; border-radius: 0; font: 700 9px var(--mono); letter-spacing: .08em; pointer-events: none; }
 .stage-toolbar { justify-content: space-between; gap: 9px; padding: 12px 2px 0; }
 .compact { min-height: 36px; font-size: 11px; padding: 0 12px; }
 .toolbar-hint { margin-left: auto; color: var(--muted-2); font-size: 11px; text-align: right; }

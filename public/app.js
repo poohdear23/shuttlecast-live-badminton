@@ -65,7 +65,7 @@
   }
   function roundedRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.closePath(); }
   function drawScoreOverlay(ctx, width, height) {
-    const scale = width / 1280; const pad = 18 * scale; const previousGames = state.gameResults.slice().reverse(); const boxW = Math.min(490 * scale, width - pad * 2); const boxH = (140 + (previousGames.length ? 28 + previousGames.length * 25 : 0)) * scale; const x = pad; const y = pad + 8 * scale;
+    const scale = width / 1280; const pad = 18 * scale; const previousGames = state.gameResults.slice().reverse(); const boxW = Math.min(490 * scale, width - pad * 2); const boxH = (140 + (previousGames.length ? 28 + previousGames.length * 25 : 0)) * scale; const x = width - boxW - pad; const y = pad + 8 * scale;
     ctx.fillStyle = 'rgba(5, 10, 17, .86)'; roundedRect(ctx, x, y, boxW, boxH, 14 * scale); ctx.fill();
     ctx.strokeStyle = 'rgba(100, 241, 210, .35)'; ctx.lineWidth = 2 * scale; roundedRect(ctx, x, y, boxW, boxH, 14 * scale); ctx.stroke();
     ctx.font = `800 ${13 * scale}px system-ui`; ctx.fillStyle = '#64f1d2'; ctx.fillText('RALLYCAST  •  LIVE', x + 18 * scale, y + 25 * scale);
@@ -157,7 +157,7 @@
     state.stream.canvas?.getTracks().forEach(track => track.stop()); state.stream.recorder = null; state.stream.canvas = null;
     await fetch(`/api/stream/${sessionId}/stop`, { method: 'POST' }).catch(() => {}); state.stream.sessionId = null; state.stream.stopping = false; setLiveUi(false); clearSecretFields(); state.destinations = { facebook: null, youtube: null }; refreshDestinationUI(); toast('หยุดถ่ายทอดสดและล้าง Stream Key แล้ว');
   }
-  function setLiveUi(isLive) { $('#liveChip').classList.toggle('live', isLive); $('#onAirLabel').textContent = isLive ? 'ON AIR' : 'PREVIEW'; setText('#liveChip', isLive ? '● LIVE' : '○ OFFLINE'); $('#startLiveButton').classList.toggle('active', isLive); setText('#startLiveLabel', isLive ? 'หยุดถ่ายทอดสด' : 'เริ่มถ่ายทอดสด'); setConnection(isLive ? 'live' : 'ready', isLive ? 'กำลังถ่ายทอดสด' : 'กล้องพร้อม'); }
+  function setLiveUi(isLive) { $('#liveChip').classList.toggle('live', isLive); if ($('#onAirLabel')) $('#onAirLabel').textContent = isLive ? 'ON AIR' : 'PREVIEW'; setText('#liveChip', isLive ? '● LIVE' : '○ OFFLINE'); $('#startLiveButton').classList.toggle('active', isLive); setText('#startLiveLabel', isLive ? 'หยุดถ่ายทอดสด' : 'เริ่มถ่ายทอดสด'); setConnection(isLive ? 'live' : 'ready', isLive ? 'กำลังถ่ายทอดสด' : 'กล้องพร้อม'); }
 
   loadMatch(); $('#matchTitle').value = state.matchTitle || 'Rally Night • Court 1'; $('#sideA').value = state.sideA || 'ทีมฟ้า'; $('#sideB').value = state.sideB || 'ทีมแดง'; $('#teamColorA').value = state.teamColorA || '#64f1d2'; $('#teamColorB').value = state.teamColorB || '#ff7f67'; $('#matchGames').value = String(state.matchGames || 3); $('#targetPoints').value = String(state.targetPoints || 21); $('#capPoints').value = String(state.capPoints || 30); $('#winByTwo').checked = state.winByTwo !== false; document.querySelectorAll('[data-format]').forEach(item => item.classList.toggle('active', item.dataset.format === state.format)); updateSetupPreview();
   const syncCapRule = () => { const target = Math.max(1, Math.min(30, Number($('#targetPoints').value) || 21)); const cap = Math.max(target, Math.min(99, Number($('#capPoints').value) || 30)); $('#targetPoints').value = target; $('#capPoints').value = cap; };
