@@ -66,10 +66,15 @@
 
   async function openCamera() {
     if (state.stream.camera) return;
+    if (!window.isSecureContext) return toast('กล้องต้องใช้ HTTPS — กรุณาเปิดลิงก์ Preview โดยตรงใน Chrome หรือ Safari');
+    if (!navigator.mediaDevices?.getUserMedia) return toast('หน้าต่าง Preview นี้ไม่อนุญาตกล้อง — เปิดลิงก์ในเบราว์เซอร์ภายนอกแทน');
     try {
       state.stream.camera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true });
       const video = $('#cameraVideo'); video.srcObject = state.stream.camera; await video.play(); $('#stage').classList.add('camera-on'); $('#broadcastCanvas').style.display = 'block'; $('#cameraToggle').textContent = 'ปิดกล้อง'; $('#openCameraButton').textContent = 'กล้องพร้อมแล้ว'; setConnection('ready', 'กล้องพร้อม'); canvasLoop(); toast('เปิดกล้องแล้ว — พร้อมตรวจ scoreboard ก่อนขึ้นไลฟ์');
-    } catch (error) { toast('เปิดกล้องไม่ได้: กรุณาอนุญาตกล้องและไมโครโฟนในเบราว์เซอร์'); setConnection('', 'ต้องการสิทธิ์กล้อง'); }
+    } catch (error) {
+      const message = error?.name === 'NotAllowedError' ? 'เบราว์เซอร์ยังไม่อนุญาตกล้อง/ไมค์ — กด Allow หรือเปิดลิงก์ใน Chrome/Safari โดยตรง' : error?.name === 'NotFoundError' ? 'ไม่พบกล้องหรือไมโครโฟนบนอุปกรณ์' : error?.name === 'NotReadableError' ? 'กล้องกำลังถูกใช้งานโดยแอปอื่น' : 'เปิดกล้องไม่ได้ — ตรวจสิทธิ์กล้องและไมโครโฟนในเบราว์เซอร์';
+      toast(message); setConnection('', 'ต้องการสิทธิ์กล้อง');
+    }
   }
   function closeCamera() { state.stream.camera?.getTracks().forEach(track => track.stop()); state.stream.camera = null; $('#cameraVideo').srcObject = null; $('#stage').classList.remove('camera-on'); $('#broadcastCanvas').style.display = 'none'; $('#cameraToggle').textContent = 'เปิดกล้อง'; setConnection('ready', 'พร้อมตั้งค่า'); }
   function toggleMic() { state.stream.micEnabled = !state.stream.micEnabled; state.stream.camera?.getAudioTracks().forEach(track => { track.enabled = state.stream.micEnabled; }); $('#micToggle').textContent = `ไมค์: ${state.stream.micEnabled ? 'เปิด' : 'ปิด'}`; }

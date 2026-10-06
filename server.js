@@ -138,7 +138,11 @@ function serveStatic(req, res, url) {
       return sendJson(res, 404, { error: 'not_found' });
     }
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, { 'Content-Type': mime[ext] || 'application/octet-stream', 'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600' });
+    res.writeHead(200, {
+      'Content-Type': mime[ext] || 'application/octet-stream',
+      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600',
+      'Permissions-Policy': 'camera=(self), microphone=(self)'
+    });
     res.end(data);
   });
 }
