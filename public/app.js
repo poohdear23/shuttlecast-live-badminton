@@ -65,7 +65,7 @@
   }
   function roundedRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.closePath(); }
   function drawScoreOverlay(ctx, width, height) {
-    const scale = width / 1280; const pad = 34 * scale; const previousGames = state.gameResults.slice().reverse(); const boxW = Math.min(490 * scale, width - pad * 2); const boxH = (116 + (previousGames.length ? 28 + previousGames.length * 25 : 0)) * scale; const x = pad; const y = pad + 56 * scale;
+    const scale = width / 1280; const pad = 18 * scale; const previousGames = state.gameResults.slice().reverse(); const boxW = Math.min(490 * scale, width - pad * 2); const boxH = (116 + (previousGames.length ? 28 + previousGames.length * 25 : 0)) * scale; const x = width - boxW - pad; const y = pad + 56 * scale;
     ctx.fillStyle = 'rgba(5, 10, 17, .86)'; roundedRect(ctx, x, y, boxW, boxH, 14 * scale); ctx.fill();
     ctx.strokeStyle = 'rgba(100, 241, 210, .35)'; ctx.lineWidth = 2 * scale; roundedRect(ctx, x, y, boxW, boxH, 14 * scale); ctx.stroke();
     ctx.font = `800 ${13 * scale}px system-ui`; ctx.fillStyle = '#64f1d2'; ctx.fillText('RALLYCAST  •  LIVE', x + 18 * scale, y + 25 * scale);
