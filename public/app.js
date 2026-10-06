@@ -77,9 +77,16 @@
     const historyTop = y + 123 * scale; ctx.font = `800 ${10 * scale}px monospace`; ctx.fillStyle = 'rgba(255,255,255,.78)'; ctx.fillText(`GAME ${state.game} / ${state.matchGames}  •  ${state.winsA}-${state.winsB}`, x + 18 * scale, historyTop);
     previousGames.forEach((result, index) => { const rowY = historyTop + (20 + index * 25) * scale; ctx.font = `700 ${13 * scale}px system-ui`; ctx.fillStyle = 'rgba(255,255,255,.62)'; ctx.fillText(`GAME ${result.game}`, x + 18 * scale, rowY); ctx.font = `800 ${17 * scale}px monospace`; ctx.fillStyle = result.winner === 'A' ? '#ff7f67' : '#fff'; ctx.fillText(String(result.scoreA).padStart(2, '0'), x + boxW - 118 * scale, rowY); ctx.fillStyle = result.winner === 'B' ? '#ff7f67' : '#fff'; ctx.fillText(String(result.scoreB).padStart(2, '0'), x + boxW - 69 * scale, rowY); });
   }
+  function drawSponsorOverlay(ctx, width, height) {
+    const scale = width / 1280; const right = width - 22 * scale; const bottom = height - 20 * scale;
+    ctx.textAlign = 'right'; ctx.font = `600 ${14 * scale}px system-ui`; ctx.fillStyle = 'rgba(255,255,255,.82)'; ctx.fillText('sponsored by', right, bottom - 28 * scale);
+    ctx.font = `900 italic ${34 * scale}px Arial, sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText('SPORT', right - 92 * scale, bottom);
+    ctx.fillStyle = '#e5323b'; ctx.fillText('CAM', right, bottom);
+    ctx.textAlign = 'start';
+  }
   function updateCanvas() {
     const canvas = $('#broadcastCanvas'); const video = $('#cameraVideo'); if (!canvas || !video.videoWidth) return;
-    const profile = QUALITY_PROFILES[state.stream.quality] || QUALITY_PROFILES.high; const width = profile.width; const height = profile.height; canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); drawCover(ctx, video, width, height); drawScoreOverlay(ctx, width, height);
+    const profile = QUALITY_PROFILES[state.stream.quality] || QUALITY_PROFILES.high; const width = profile.width; const height = profile.height; canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); drawCover(ctx, video, width, height); drawScoreOverlay(ctx, width, height); drawSponsorOverlay(ctx, width, height);
   }
   function canvasLoop() { updateCanvas(); if (state.stream.camera) requestAnimationFrame(canvasLoop); }
 
