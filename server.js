@@ -98,13 +98,20 @@ function routeApi(req, res, url) {
       process.on('error', error => { session.error = error.code || 'ffmpeg_error'; session.closed = true; sessions.delete(id); });
       process.stdin.on('error', () => { session.closed = true; sessions.delete(id); });
       process.stderr.on('data', chunk => {
-        const text = String(chunk);
-        if (/error|failed|unable/i.test(text)) session.lastError = 'ปลายทางตอบกลับผิดพลาด';
+        const text = String(chunk).replace(/rtmps?:\/\/[^\s]+/gi, 'RTMP_TARGET').trim();
+        if (/error|failed|unable|reject|denied/i.test(text)) { session.lastError = text.slice(-500); console.error(`[relay ${id}] ${text}`); }
       });
       process.on('close', () => { session.closed = true; sessions.delete(id); });
       sessions.set(id, session);
       return sendJson(res, 200, { ok: true, sessionId: id, targets: targets.length, status: 'relay_ready' });
     }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'start_failed' }));
+  }
+
+  const statusMatch = url.pathname.match(/^\/api\/stream\/([^/]+)\/status$/);
+  if (req.method === 'GET' && statusMatch) {
+    const session = sessions.get(statusMatch[1]);
+    if (!session) return sendJson(res, 404, { ok: false, error: 'session_not_found' });
+    return sendJson(res, 200, { ok: true, running: !session.closed, targets: session.targets, lastError: session.lastError || null });
   }
 
   const chunkMatch = url.pathname.match(/^\/api\/stream\/([^/]+)\/chunk$/);

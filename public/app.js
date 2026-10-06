@@ -132,10 +132,20 @@
         if (!event.data.size) return;
         state.stream.uploadQueue = state.stream.uploadQueue.then(() => uploadChunk(sessionId, event.data)).catch(() => toast('ส่งสัญญาณสะดุด — กำลังตรวจการเชื่อมต่อ'));
       };
-      recorder.onerror = () => toast('ตัวบันทึกวิดีโอของเบราว์เซอร์ขัดข้อง'); recorder.start(1000); setLiveUi(true); toast(`เริ่ม relay ไป ${result.targets} ปลายทางแล้ว — ตรวจสถานะ LIVE ในแพลตฟอร์ม`);
+      recorder.onerror = () => toast('ตัวบันทึกวิดีโอของเบราว์เซอร์ขัดข้อง'); recorder.start(1000); setLiveUi(true); toast(`กำลังเชื่อมต่อ ${result.targets} ปลายทาง — รอแพลตฟอร์มรับสัญญาณ`); pollRelayStatus(sessionId);
     } catch (error) {
       if (sessionId) await fetch(`/api/stream/${sessionId}/stop`, { method: 'POST' }).catch(() => {});
       toast('เริ่มถ่ายทอดสดไม่ได้ — ตรวจ HTTPS, กล้อง และ Stream Key');
+    }
+  }
+  async function pollRelayStatus(sessionId) {
+    for (let attempt = 0; attempt < 12 && state.stream.sessionId === sessionId && state.stream.running; attempt += 1) {
+      await new Promise(resolve => window.setTimeout(resolve, 1500));
+      try {
+        const response = await fetch(`/api/stream/${sessionId}/status`); const status = await response.json();
+        if (status.lastError) { toast(`ปลายทางไม่รับสัญญาณ: ${status.lastError}`); return; }
+        if (!status.running) { toast('Relay หยุดทำงาน — ตรวจ Stream Key และ Live Producer'); return; }
+      } catch {}
     }
   }
   async function stopLive() {
