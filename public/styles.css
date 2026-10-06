@@ -113,7 +113,7 @@ main { padding: 44px 0 20px; }
 .preview-color, .score-color { display: inline-block; flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--mint); }
 .mock-score div:nth-child(2) .preview-color { background: var(--coral); }
 .mock-score div:last-child { border: 0; }
-.mock-score b { font: 800 24px var(--mono); color: var(--mint); }
+.mock-score b { font: 800 24px var(--mono); color: #fff; }
 .mock-score div:last-child b { color: #fff; }
 .mock-camera-label { position: absolute; top: 12px; left: 12px; font: 700 9px var(--mono); color: rgba(255,255,255,.66); }
 .preview-caption { color: var(--muted); display: flex; justify-content: space-between; font-size: 11px; }
@@ -153,8 +153,8 @@ main { padding: 44px 0 20px; }
 .score-color { width: 9px; height: 9px; box-shadow: 0 0 0 3px rgba(255,255,255,.06); }
 .side-label { color: var(--mint); font: 800 9px var(--mono); letter-spacing: .1em; }
 .side-label-b { color: var(--coral); }
-.score-number { font: 800 45px/1 var(--mono); color: var(--mint); text-align: center; letter-spacing: -.12em; }
-.right-score { color: var(--coral); }
+.score-number { font: 800 45px/1 var(--mono); color: #fff; text-align: center; letter-spacing: -.12em; }
+.right-score { color: #fff; }
 .score-button, .minus-button { width: 100%; border-radius: 9px; border: 1px solid transparent; font-weight: 900; }
 .score-button { height: 39px; background: var(--mint); color: var(--bg); }
 .score-button.plus-b { background: var(--coral); }

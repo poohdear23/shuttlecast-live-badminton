@@ -21,7 +21,7 @@
   function applySetupValues() {
     state.matchTitle = $('#matchTitle').value.trim() || 'Rally Night • Court 1';
     state.sideA = $('#sideA').value.trim() || 'ฝั่ง A'; state.sideB = $('#sideB').value.trim() || 'ฝั่ง B'; state.teamColorA = $('#teamColorA').value; state.teamColorB = $('#teamColorB').value; persistMatch();
-    state.matchGames = Number($('#matchGames').value); state.targetPoints = Number($('#targetPoints').value); state.capPoints = Number($('#capPoints').value); state.winByTwo = $('#winByTwo').checked; persistMatch();
+    state.matchGames = Number($('#matchGames').value); state.targetPoints = Math.max(1, Math.min(30, Number($('#targetPoints').value) || 21)); $('#targetPoints').value = state.targetPoints; state.capPoints = Number($('#capPoints').value); state.winByTwo = $('#winByTwo').checked; persistMatch();
     setText('#scoreNameAText', state.sideA); setText('#scoreNameBText', state.sideB); setText('#studioTitle', state.matchTitle); updateTeamColors(); renderScore();
   }
   function showView(view) { state.view = view; $('#setupView').classList.toggle('active', view === 'setup'); $('#studioView').classList.toggle('active', view === 'studio'); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -63,7 +63,7 @@
     ctx.font = `800 ${13 * scale}px system-ui`; ctx.fillStyle = '#64f1d2'; ctx.fillText('RALLYCAST  •  LIVE', x + 18 * scale, y + 25 * scale);
     ctx.fillStyle = state.teamColorA; ctx.beginPath(); ctx.arc(x + 22 * scale, y + 53 * scale, 5 * scale, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = state.teamColorB; ctx.beginPath(); ctx.arc(x + 22 * scale, y + 87 * scale, 5 * scale, 0, Math.PI * 2); ctx.fill();
     ctx.font = `700 ${18 * scale}px system-ui`; ctx.fillStyle = '#f5f8ff'; ctx.fillText(state.sideA, x + 36 * scale, y + 57 * scale); ctx.fillText(state.sideB, x + 36 * scale, y + 91 * scale);
-    ctx.font = `800 ${31 * scale}px monospace`; ctx.fillStyle = '#64f1d2'; ctx.fillText(String(state.scoreA).padStart(2, '0'), x + boxW - 118 * scale, y + 61 * scale); ctx.fillStyle = '#ff7f67'; ctx.fillText(String(state.scoreB).padStart(2, '0'), x + boxW - 118 * scale, y + 95 * scale);
+    ctx.font = `800 ${31 * scale}px monospace`; ctx.fillStyle = '#fff'; ctx.fillText(String(state.scoreA).padStart(2, '0'), x + boxW - 118 * scale, y + 61 * scale); ctx.fillStyle = '#fff'; ctx.fillText(String(state.scoreB).padStart(2, '0'), x + boxW - 118 * scale, y + 95 * scale);
     ctx.font = `800 ${12 * scale}px monospace`; ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillText(`GAME ${state.game}/${state.matchGames}  •  ${state.winsA}-${state.winsB}`, x + boxW - 94 * scale, y + 25 * scale);
   }
   function updateCanvas() {
@@ -141,7 +141,7 @@
   function setLiveUi(isLive) { $('#liveChip').classList.toggle('live', isLive); $('#onAirLabel').textContent = isLive ? 'ON AIR' : 'PREVIEW'; setText('#liveChip', isLive ? '● LIVE' : '○ OFFLINE'); $('#startLiveButton').classList.toggle('active', isLive); setText('#startLiveLabel', isLive ? 'หยุดถ่ายทอดสด' : 'เริ่มถ่ายทอดสด'); setConnection(isLive ? 'live' : 'ready', isLive ? 'กำลังถ่ายทอดสด' : 'กล้องพร้อม'); }
 
   loadMatch(); $('#matchTitle').value = state.matchTitle || 'Rally Night • Court 1'; $('#sideA').value = state.sideA || 'ทีมฟ้า'; $('#sideB').value = state.sideB || 'ทีมแดง'; $('#teamColorA').value = state.teamColorA || '#64f1d2'; $('#teamColorB').value = state.teamColorB || '#ff7f67'; $('#matchGames').value = String(state.matchGames || 3); $('#targetPoints').value = String(state.targetPoints || 21); $('#capPoints').value = String(state.capPoints || 30); $('#winByTwo').checked = state.winByTwo !== false; document.querySelectorAll('[data-format]').forEach(item => item.classList.toggle('active', item.dataset.format === state.format)); updateSetupPreview();
-  const syncCapRule = () => { const cap15 = $('#capPoints').querySelector('option[value="15"]'); cap15.disabled = Number($('#targetPoints').value) > 15; if (cap15.disabled && $('#capPoints').value === '15') $('#capPoints').value = '30'; };
+  const syncCapRule = () => { const target = Math.max(1, Math.min(30, Number($('#targetPoints').value) || 21)); $('#targetPoints').value = target; const cap15 = $('#capPoints').querySelector('option[value="15"]'); cap15.disabled = target > 15; if (cap15.disabled && $('#capPoints').value === '15') $('#capPoints').value = '30'; };
   syncCapRule(); $('#targetPoints').addEventListener('change', syncCapRule);
   document.querySelectorAll('[data-format]').forEach(button => button.addEventListener('click', () => { state.format = button.dataset.format; document.querySelectorAll('[data-format]').forEach(item => item.classList.toggle('active', item === button)); }));
   $('#sideA').addEventListener('input', updateSetupPreview); $('#sideB').addEventListener('input', updateSetupPreview); $('#teamColorA').addEventListener('input', updateTeamColors); $('#teamColorB').addEventListener('input', updateTeamColors);
