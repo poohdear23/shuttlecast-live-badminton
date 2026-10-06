@@ -80,6 +80,11 @@ main { padding: 44px 0 20px; }
 .player-input.side-a { border-top: 2px solid var(--mint); }
 .player-input.side-b { border-top: 2px solid var(--coral); }
 .team-tag { color: var(--muted); margin-bottom: 15px; display: flex; align-items: center; gap: 7px; }
+.team-name-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.team-name-label .field-label { flex: 1; }
+.color-picker { display: inline-flex; align-items: center; gap: 5px; color: var(--muted-2); font-size: 9px; cursor: pointer; }
+.color-picker input { width: 22px; height: 22px; padding: 0; border: 2px solid rgba(255,255,255,.5); border-radius: 50%; overflow: hidden; background: transparent; cursor: pointer; }
+.color-picker span { white-space: nowrap; }
 .team-dot { width: 7px; height: 7px; border-radius: 2px; background: var(--mint); }
 .side-b .team-dot { background: var(--coral); }
 .setup-note { color: var(--muted); margin: 21px 0; display: flex; align-items: center; gap: 8px; font-size: 12px; }
@@ -104,6 +109,9 @@ main { padding: 44px 0 20px; }
 .mock-shuttle { position: absolute; top: 42%; left: 48%; color: rgba(255,255,255,.88); font-size: 20px; transform: rotate(22deg); }
 .mock-score { position: absolute; left: 9%; right: 9%; bottom: 23px; padding: 11px 13px; border-radius: 10px; background: rgba(4, 9, 16, .78); backdrop-filter: blur(8px); }
 .mock-score div { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.1); font-size: 12px; }
+.mock-score div > span { display: inline-flex; align-items: center; gap: 7px; }
+.preview-color, .score-color { display: inline-block; flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--mint); }
+.mock-score div:nth-child(2) .preview-color { background: var(--coral); }
 .mock-score div:last-child { border: 0; }
 .mock-score b { font: 800 24px var(--mono); color: var(--mint); }
 .mock-score div:last-child b { color: #fff; }
@@ -140,6 +148,9 @@ main { padding: 44px 0 20px; }
 .score-side { min-width: 0; }
 .score-side.align-right { text-align: right; }
 .score-side strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; margin: 5px 0 12px; }
+.score-name-line { display: flex !important; align-items: center; gap: 6px; }
+.align-right .score-name-line { justify-content: flex-end; }
+.score-color { width: 9px; height: 9px; box-shadow: 0 0 0 3px rgba(255,255,255,.06); }
 .side-label { color: var(--mint); font: 800 9px var(--mono); letter-spacing: .1em; }
 .side-label-b { color: var(--coral); }
 .score-number { font: 800 45px/1 var(--mono); color: var(--mint); text-align: center; letter-spacing: -.12em; }

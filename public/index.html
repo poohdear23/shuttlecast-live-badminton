@@ -63,12 +63,12 @@
             <div class="players-grid">
               <div class="player-input side-a">
                 <div class="team-tag"><span class="team-dot"></span> SIDE A</div>
-                <label class="field-label" for="sideA">ผู้เล่น / ทีม A</label>
+                <div class="team-name-label"><label class="field-label" for="sideA">ผู้เล่น / ทีม A</label><label class="color-picker" title="เลือกสีทีม A"><input type="color" id="teamColorA" value="#64f1d2"><span>สีทีม</span></label></div>
                 <input class="text-input" id="sideA" maxlength="40" placeholder="เช่น K. Axelsen" value="ทีมฟ้า">
               </div>
               <div class="player-input side-b">
                 <div class="team-tag"><span class="team-dot"></span> SIDE B</div>
-                <label class="field-label" for="sideB">ผู้เล่น / ทีม B</label>
+                <div class="team-name-label"><label class="field-label" for="sideB">ผู้เล่น / ทีม B</label><label class="color-picker" title="เลือกสีทีม B"><input type="color" id="teamColorB" value="#ff7f67"><span>สีทีม</span></label></div>
                 <input class="text-input" id="sideB" maxlength="40" placeholder="เช่น C. Marin" value="ทีมแดง">
               </div>
             </div>
@@ -83,8 +83,8 @@
               <div class="court-lines"></div>
               <div class="mock-shuttle">✦</div>
               <div class="mock-score">
-                <div><span id="previewA">ทีมฟ้า</span><b>00</b></div>
-                <div><span id="previewB">ทีมแดง</span><b>00</b></div>
+                <div><span><i class="preview-color" id="previewColorA"></i><span id="previewA">ทีมฟ้า</span></span><b>00</b></div>
+                <div><span><i class="preview-color" id="previewColorB"></i><span id="previewB">ทีมแดง</span></span><b>00</b></div>
               </div>
               <div class="mock-camera-label">CAM 01 • PREVIEW</div>
             </div>
@@ -128,10 +128,10 @@
             <section class="panel score-panel">
               <div class="panel-heading compact-heading"><div><p class="section-label">SCOREBOARD</p><h3 id="scoreTitle">GAME 1 / BEST OF 3</h3><p class="rule-summary" id="ruleSummary">21 แต้ม • นำ 2 • สูงสุด 30</p></div><button class="dots-button" id="renameButton" aria-label="แก้ชื่อ">•••</button></div>
               <div class="score-row">
-                <div class="score-side"><span class="side-label side-label-a">SIDE A</span><strong id="scoreNameA">ทีมฟ้า</strong><button class="score-button plus-a" id="addA">+1</button><button class="minus-button" id="minusA">−</button></div>
+                <div class="score-side"><span class="side-label side-label-a">SIDE A</span><strong class="score-name-line"><i class="score-color" id="scoreColorA"></i><span id="scoreNameAText">ทีมฟ้า</span></strong><button class="score-button plus-a" id="addA">+1</button><button class="minus-button" id="minusA">−</button></div>
                 <div class="score-number" id="scoreA">0</div>
                 <div class="score-number right-score" id="scoreB">0</div>
-                <div class="score-side align-right"><span class="side-label side-label-b">SIDE B</span><strong id="scoreNameB">ทีมแดง</strong><button class="score-button plus-b" id="addB">+1</button><button class="minus-button" id="minusB">−</button></div>
+                <div class="score-side align-right"><span class="side-label side-label-b">SIDE B</span><strong class="score-name-line"><span id="scoreNameBText">ทีมแดง</span><i class="score-color" id="scoreColorB"></i></strong><button class="score-button plus-b" id="addB">+1</button><button class="minus-button" id="minusB">−</button></div>
               </div>
               <div class="game-strip"><span id="gameWinsA">0</span><i></i><span>เกมที่ <b id="gameNumber">1</b></span><i></i><span id="gameWinsB">0</span></div>
               <div class="score-actions"><button class="text-button" id="undoButton">↶ ย้อนแต้ม</button><button class="text-button danger-text" id="resetButton">รีเซ็ตเกม</button><button class="text-button" id="nextGameButton">เกมถัดไป →</button></div>
