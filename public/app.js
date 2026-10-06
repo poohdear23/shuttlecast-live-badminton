@@ -2,7 +2,7 @@
   const $ = (selector) => document.querySelector(selector);
   const state = {
     view: 'setup', format: 'singles', matchTitle: 'Rally Night • Court 1', sideA: 'ทีมฟ้า', sideB: 'ทีมแดง', teamColorA: '#64f1d2', teamColorB: '#ff7f67', matchGames: 3, targetPoints: 21, capPoints: 30, winByTwo: true,
-    scoreA: 0, scoreB: 0, winsA: 0, winsB: 0, game: 1, history: [],
+    scoreA: 0, scoreB: 0, winsA: 0, winsB: 0, game: 1, gameResults: [], history: [],
     stream: { camera: null, canvas: null, recorder: null, sessionId: null, running: false, stopping: false, uploadQueue: Promise.resolve(), micEnabled: true },
     destinations: { facebook: null, youtube: null }
   };
@@ -28,9 +28,17 @@
 
   function renderScore() {
     setText('#scoreA', state.scoreA); setText('#scoreB', state.scoreB); setText('#gameWinsA', state.winsA); setText('#gameWinsB', state.winsB); setText('#gameNumber', state.game); setText('#scoreTitle', `GAME ${state.game} / ${state.matchGames === 1 ? 'SINGLE GAME' : `BEST OF ${state.matchGames}`}`); setText('#ruleSummary', `${state.targetPoints} แต้ม • ${state.winByTwo ? 'นำ 2' : 'แต้มถึงก่อน'} • สูงสุด ${state.capPoints}`); setText('#nextGameButton', state.matchGames === 1 ? 'จบเกม →' : 'เกมถัดไป →');
+    renderGameHistory();
     updateCanvas();
   }
-  function snapshot() { state.history.push({ scoreA: state.scoreA, scoreB: state.scoreB, winsA: state.winsA, winsB: state.winsB, game: state.game }); if (state.history.length > 30) state.history.shift(); }
+  function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character])); }
+  function renderGameHistory() {
+    const root = $('#gameHistory'); if (!root) return;
+    if (!state.gameResults.length) { root.hidden = true; root.innerHTML = ''; return; }
+    root.hidden = false;
+    root.innerHTML = `<div class="history-heading">ผลเกมที่ผ่านมา</div>${state.gameResults.slice().reverse().map(result => `<div class="history-row"><span class="history-game">เกม ${result.game}</span><span class="history-name history-name-a">${escapeHtml(state.sideA)}</span><strong class="history-score ${result.winner === 'A' ? 'winner-score' : ''}">${result.scoreA}</strong><span class="history-sep">—</span><strong class="history-score ${result.winner === 'B' ? 'winner-score' : ''}">${result.scoreB}</strong><span class="history-name history-name-b">${escapeHtml(state.sideB)}</span></div>`).join('')}`;
+  }
+  function snapshot() { state.history.push({ scoreA: state.scoreA, scoreB: state.scoreB, winsA: state.winsA, winsB: state.winsB, game: state.game, gameResults: state.gameResults.map(result => ({ ...result })) }); if (state.history.length > 30) state.history.shift(); }
   function addPoint(side) { snapshot(); if (side === 'A') state.scoreA = Math.min(state.capPoints, state.scoreA + 1); else state.scoreB = Math.min(state.capPoints, state.scoreB + 1); renderScore(); }
   function subtractPoint(side) { snapshot(); if (side === 'A') state.scoreA = Math.max(0, state.scoreA - 1); else state.scoreB = Math.max(0, state.scoreB - 1); renderScore(); }
   function undo() { const last = state.history.pop(); if (!last) return toast('ยังไม่มีแต้มให้ย้อนกลับ'); Object.assign(state, last); renderScore(); toast('ย้อนแต้มล่าสุดแล้ว'); }
@@ -43,7 +51,7 @@
     if (state.matchGames !== 1 && (state.game >= state.matchGames || state.winsA >= Math.ceil(state.matchGames / 2) || state.winsB >= Math.ceil(state.matchGames / 2))) return toast('แมตช์นี้ครบตามจำนวนเกมที่ตั้งไว้แล้ว');
     const winner = state.scoreA > state.scoreB ? 'A' : state.scoreB > state.scoreA ? 'B' : null;
     if (!winner) return toast('คะแนนเท่ากัน ยังบันทึกผู้ชนะไม่ได้');
-    snapshot(); if (winner === 'A') state.winsA += 1; if (winner === 'B') state.winsB += 1;
+    snapshot(); state.gameResults.push({ game: state.game, scoreA: state.scoreA, scoreB: state.scoreB, winner }); if (winner === 'A') state.winsA += 1; if (winner === 'B') state.winsB += 1;
     if (state.matchGames === 1) { renderScore(); return toast(`บันทึกผลการแข่งขัน: ${winner === 'A' ? state.sideA : state.sideB} ชนะ`); }
     const previousGame = state.game; state.scoreA = 0; state.scoreB = 0; state.game = Math.min(state.matchGames, state.game + 1); renderScore(); toast(winner ? `บันทึกผู้ชนะเกม ${previousGame} แล้ว` : 'เริ่มเกมถัดไปแล้ว');
   }
