@@ -65,18 +65,15 @@
   }
   function roundedRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.closePath(); }
   function drawScoreOverlay(ctx, width, height) {
-    const scale = width / 1280; const pad = 18 * scale; const previousGames = state.gameResults.slice().reverse(); const boxW = Math.min(490 * scale, width - pad * 2); const boxH = (116 + (previousGames.length ? 28 + previousGames.length * 25 : 0)) * scale; const x = pad; const y = pad + 8 * scale;
+    const scale = width / 1280; const pad = 18 * scale; const previousGames = state.gameResults.slice().reverse(); const boxW = Math.min(490 * scale, width - pad * 2); const boxH = (140 + (previousGames.length ? 28 + previousGames.length * 25 : 0)) * scale; const x = pad; const y = pad + 8 * scale;
     ctx.fillStyle = 'rgba(5, 10, 17, .86)'; roundedRect(ctx, x, y, boxW, boxH, 14 * scale); ctx.fill();
     ctx.strokeStyle = 'rgba(100, 241, 210, .35)'; ctx.lineWidth = 2 * scale; roundedRect(ctx, x, y, boxW, boxH, 14 * scale); ctx.stroke();
     ctx.font = `800 ${13 * scale}px system-ui`; ctx.fillStyle = '#64f1d2'; ctx.fillText('RALLYCAST  •  LIVE', x + 18 * scale, y + 25 * scale);
     ctx.fillStyle = state.teamColorA; ctx.beginPath(); ctx.arc(x + 22 * scale, y + 53 * scale, 5 * scale, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = state.teamColorB; ctx.beginPath(); ctx.arc(x + 22 * scale, y + 87 * scale, 5 * scale, 0, Math.PI * 2); ctx.fill();
     ctx.font = `700 ${18 * scale}px system-ui`; ctx.fillStyle = '#f5f8ff'; ctx.fillText(state.sideA, x + 36 * scale, y + 57 * scale); ctx.fillText(state.sideB, x + 36 * scale, y + 91 * scale);
     ctx.font = `800 ${31 * scale}px monospace`; ctx.fillStyle = '#fff'; ctx.fillText(String(state.scoreA).padStart(2, '0'), x + boxW - 118 * scale, y + 61 * scale); ctx.fillStyle = '#fff'; ctx.fillText(String(state.scoreB).padStart(2, '0'), x + boxW - 118 * scale, y + 95 * scale);
-    ctx.font = `800 ${12 * scale}px monospace`; ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillText(`GAME ${state.game}/${state.matchGames}  •  ${state.winsA}-${state.winsB}`, x + boxW - 94 * scale, y + 25 * scale);
-    if (previousGames.length) {
-      const historyTop = y + 123 * scale; ctx.font = `800 ${10 * scale}px monospace`; ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillText('PREVIOUS GAMES', x + 18 * scale, historyTop);
-      previousGames.forEach((result, index) => { const rowY = historyTop + (20 + index * 25) * scale; ctx.font = `700 ${13 * scale}px system-ui`; ctx.fillStyle = 'rgba(255,255,255,.62)'; ctx.fillText(`GAME ${result.game}`, x + 18 * scale, rowY); ctx.font = `800 ${17 * scale}px monospace`; ctx.fillStyle = result.winner === 'A' ? '#ff7f67' : '#fff'; ctx.fillText(String(result.scoreA).padStart(2, '0'), x + boxW - 118 * scale, rowY); ctx.fillStyle = result.winner === 'B' ? '#ff7f67' : '#fff'; ctx.fillText(String(result.scoreB).padStart(2, '0'), x + boxW - 69 * scale, rowY); });
-    }
+    const historyTop = y + 123 * scale; ctx.font = `800 ${10 * scale}px monospace`; ctx.fillStyle = 'rgba(255,255,255,.78)'; ctx.fillText(`GAME ${state.game} / ${state.matchGames}  •  ${state.winsA}-${state.winsB}`, x + 18 * scale, historyTop);
+    previousGames.forEach((result, index) => { const rowY = historyTop + (20 + index * 25) * scale; ctx.font = `700 ${13 * scale}px system-ui`; ctx.fillStyle = 'rgba(255,255,255,.62)'; ctx.fillText(`GAME ${result.game}`, x + 18 * scale, rowY); ctx.font = `800 ${17 * scale}px monospace`; ctx.fillStyle = result.winner === 'A' ? '#ff7f67' : '#fff'; ctx.fillText(String(result.scoreA).padStart(2, '0'), x + boxW - 118 * scale, rowY); ctx.fillStyle = result.winner === 'B' ? '#ff7f67' : '#fff'; ctx.fillText(String(result.scoreB).padStart(2, '0'), x + boxW - 69 * scale, rowY); });
   }
   function updateCanvas() {
     const canvas = $('#broadcastCanvas'); const video = $('#cameraVideo'); if (!canvas || !video.videoWidth) return;
