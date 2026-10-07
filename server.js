@@ -156,7 +156,6 @@ function routeApi(req, res, url) {
     if (!currentAuthSession(req)) return sendJson(res, 401, { ok: false, error: 'ต้องเข้าสู่ระบบก่อน' });
     return readJson(req).then(body => {
       if (!verifyOwnerSecret(body.ownerSecret)) return sendJson(res, 403, { ok: false, error: 'Secret Code ยืนยันความเป็นเจ้าของไม่ถูกต้อง' });
-      if (!verifyPassword(body.currentPassword, passwordRecord)) return sendJson(res, 401, { ok: false, error: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' });
       if (!validPassword(body.newPassword)) return sendJson(res, 400, { ok: false, error: `รหัสผ่านใหม่ต้องมี ${PASSWORD_MIN_LENGTH}-${128} ตัวอักษร` });
       passwordRecord = createPasswordRecord(body.newPassword); savePasswordRecord(); authSessions.clear(); issueAuthSession(res); return sendJson(res, 200, { ok: true, authenticated: true });
     }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'change_password_failed' }));

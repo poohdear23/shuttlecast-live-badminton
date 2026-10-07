@@ -174,10 +174,9 @@
     <div class="modal-backdrop" id="securityModal" hidden>
       <section class="modal panel" role="dialog" aria-modal="true" aria-labelledby="securityTitle">
         <div class="modal-heading"><div><p class="section-label">SECURITY</p><h3 id="securityTitle">ตั้งค่าความปลอดภัย</h3></div><button class="close-button" id="closeSecurity" type="button">×</button></div>
-        <p class="modal-intro">เฉพาะเจ้าของระบบเท่านั้นที่เปลี่ยนรหัสผ่านได้ การเปลี่ยนรหัสจะทำให้ Session อื่นออกจากระบบทั้งหมด</p>
+        <p class="modal-intro">ผู้ดูแลระบบสามารถรีเซ็ตรหัสผ่านด้วย Secret Code ได้ การเปลี่ยนรหัสจะทำให้ Session อื่นออกจากระบบทั้งหมด</p>
         <form id="changePasswordForm">
-          <label class="field-label" for="ownerSecret">Secret Code ยืนยันความเป็นเจ้าของ</label><input class="text-input" id="ownerSecret" type="password" autocomplete="off" placeholder="กรอก Secret Code ของเจ้าของระบบ" required>
-          <label class="field-label" for="currentPassword">รหัสผ่านปัจจุบัน</label><input class="text-input" id="currentPassword" type="password" autocomplete="current-password" required>
+          <label class="field-label" for="ownerSecret">Secret Code ผู้ดูแลระบบ</label><input class="text-input" id="ownerSecret" type="password" autocomplete="off" placeholder="กรอก Secret Code ของผู้ดูแลระบบ" required>
           <label class="field-label" for="newPassword">รหัสผ่านใหม่</label><input class="text-input" id="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
           <label class="field-label" for="confirmPassword">ยืนยันรหัสผ่านใหม่</label><input class="text-input" id="confirmPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
           <p class="auth-error" id="changePasswordError" role="alert"></p>
