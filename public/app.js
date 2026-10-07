@@ -1,7 +1,7 @@
 (() => {
   const $ = (selector) => document.querySelector(selector);
   const state = {
-    view: 'setup', format: 'singles', matchTitle: 'Rally Night • Court 1', sideA: 'ทีมฟ้า', sideB: 'ทีมแดง', teamColorA: '#d3a94f', teamColorB: '#ead7aa', matchGames: 3, targetPoints: 21, capPoints: 30, winByTwo: true,
+    view: 'setup', matchTitle: 'Rally Night • Court 1', sideA: 'ทีมฟ้า', sideB: 'ทีมแดง', teamColorA: '#d3a94f', teamColorB: '#ead7aa', matchGames: 3, targetPoints: 21, capPoints: 30, winByTwo: true,
     scoreA: 0, scoreB: 0, winsA: 0, winsB: 0, game: 1, gameResults: [], history: [],
     stream: { camera: null, canvas: null, recorder: null, sessionId: null, running: false, stopping: false, uploadQueue: Promise.resolve(), micEnabled: true, quality: 'high', switching: false, consecutiveFailures: 0, successfulUploads: 0 },
     destinations: { facebook: null, youtube: null }
@@ -16,7 +16,7 @@
   };
   const setConnection = (kind, label) => { $('#connectionDot').className = `connection-dot ${kind || ''}`; $('#connectionLabel').textContent = label; };
   const setText = (id, value) => { const el = $(id); if (el) el.textContent = value; };
-  const persistMatch = () => localStorage.setItem('rallycast.match', JSON.stringify({ format: state.format, matchTitle: state.matchTitle, sideA: state.sideA, sideB: state.sideB, teamColorA: state.teamColorA, teamColorB: state.teamColorB, matchGames: state.matchGames, targetPoints: state.targetPoints, capPoints: state.capPoints, winByTwo: state.winByTwo }));
+  const persistMatch = () => localStorage.setItem('rallycast.match', JSON.stringify({ matchTitle: state.matchTitle, sideA: state.sideA, sideB: state.sideB, teamColorA: state.teamColorA, teamColorB: state.teamColorB, matchGames: state.matchGames, targetPoints: state.targetPoints, capPoints: state.capPoints, winByTwo: state.winByTwo }));
   const loadMatch = () => { try { const saved = JSON.parse(localStorage.getItem('rallycast.match')); if (saved) Object.assign(state, saved); } catch {} };
 
   function updateSetupPreview() { setText('#previewA', $('#sideA').value || 'ฝั่ง A'); setText('#previewB', $('#sideB').value || 'ฝั่ง B'); updateTeamColors(); }
@@ -170,10 +170,9 @@
   }
   function setLiveUi(isLive) { $('#liveChip').classList.toggle('live', isLive); if ($('#onAirLabel')) $('#onAirLabel').textContent = isLive ? 'ON AIR' : 'PREVIEW'; setText('#liveChip', isLive ? '● LIVE' : '○ OFFLINE'); $('#startLiveButton').classList.toggle('active', isLive); setText('#startLiveLabel', isLive ? 'หยุดถ่ายทอดสด' : 'เริ่มถ่ายทอดสด'); setConnection(isLive ? 'live' : 'ready', isLive ? 'กำลังถ่ายทอดสด' : 'กล้องพร้อม'); }
 
-  loadMatch(); loadDestinations(); $('#matchTitle').value = state.matchTitle || 'Rally Night • Court 1'; $('#sideA').value = state.sideA || 'ทีมฟ้า'; $('#sideB').value = state.sideB || 'ทีมแดง'; $('#teamColorA').value = state.teamColorA || '#d3a94f'; $('#teamColorB').value = state.teamColorB || '#ead7aa'; $('#matchGames').value = String(state.matchGames || 3); $('#targetPoints').value = String(state.targetPoints || 21); $('#capPoints').value = String(state.capPoints || 30); $('#winByTwo').checked = state.winByTwo !== false; document.querySelectorAll('[data-format]').forEach(item => item.classList.toggle('active', item.dataset.format === state.format)); updateSetupPreview();
+  loadMatch(); loadDestinations(); $('#matchTitle').value = state.matchTitle || 'Rally Night • Court 1'; $('#sideA').value = state.sideA || 'ทีมฟ้า'; $('#sideB').value = state.sideB || 'ทีมแดง'; $('#teamColorA').value = state.teamColorA || '#d3a94f'; $('#teamColorB').value = state.teamColorB || '#ead7aa'; $('#matchGames').value = String(state.matchGames || 3); $('#targetPoints').value = String(state.targetPoints || 21); $('#capPoints').value = String(state.capPoints || 30); $('#winByTwo').checked = state.winByTwo !== false; updateSetupPreview();
   const syncCapRule = () => { const target = Math.max(1, Math.min(30, Number($('#targetPoints').value) || 21)); const cap = Math.max(target, Math.min(99, Number($('#capPoints').value) || 30)); $('#targetPoints').value = target; $('#capPoints').value = cap; };
   syncCapRule(); $('#targetPoints').addEventListener('change', syncCapRule); $('#capPoints').addEventListener('change', syncCapRule);
-  document.querySelectorAll('[data-format]').forEach(button => button.addEventListener('click', () => { state.format = button.dataset.format; document.querySelectorAll('[data-format]').forEach(item => item.classList.toggle('active', item === button)); }));
   $('#sideA').addEventListener('input', updateSetupPreview); $('#sideB').addEventListener('input', updateSetupPreview); $('#teamColorA').addEventListener('input', updateTeamColors); $('#teamColorB').addEventListener('input', updateTeamColors);
   $('#setupForm').addEventListener('submit', (event) => { event.preventDefault(); applySetupValues(); showView('studio'); setConnection('ready', 'พร้อมถ่ายทอด'); });
   $('#openCameraButton').addEventListener('click', openCamera); $('#cameraToggle').addEventListener('click', () => state.stream.running ? toast('หยุดไลฟ์ก่อนปิดกล้อง') : (state.stream.camera ? closeCamera() : openCamera())); $('#micToggle').addEventListener('click', toggleMic);

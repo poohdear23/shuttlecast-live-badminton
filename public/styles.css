@@ -65,9 +65,6 @@ main { padding: 44px 0 20px; }
 .text-input::placeholder { color: var(--muted-2); }
 .text-input:focus { border-color: rgba(211,169,79,.65); background: rgba(12, 10, 8, .7); }
 .row-label { margin-top: 23px; }
-.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: rgba(10, 8, 6, .38); }
-.segment { border: 0; background: transparent; color: var(--muted); border-radius: 8px; padding: 10px 12px; font-weight: 750; }
-.segment.active { color: var(--bg); background: var(--mint); box-shadow: 0 5px 14px rgba(211,169,79,.13); }
 .rules-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 13px; padding: 13px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.025); }
 .rule-field { display: grid; gap: 7px; color: var(--muted); font-size: 10px; font-weight: 750; }
 .rule-field .text-input { height: 40px; padding: 0 10px; font-size: 11px; }
