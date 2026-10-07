@@ -8,6 +8,7 @@
   };
   const QUALITY_PROFILES = { high: { label: '1080p • 6 Mbps', width: 1920, height: 1080, bitrate: 6000000 }, medium: { label: '720p • 4.5 Mbps', width: 1280, height: 720, bitrate: 4500000 }, low: { label: '720p • 2.5 Mbps', width: 1280, height: 720, bitrate: 2500000 } };
   const qualityOrder = ['high', 'medium', 'low'];
+  const sponsorLogo = new Image(); sponsorLogo.src = '/the-smokery-logo.png';
 
   const toast = (message) => {
     const el = $('#toast'); el.textContent = message; el.classList.add('show');
@@ -78,11 +79,12 @@
     previousGames.forEach((result, index) => { const rowY = historyTop + (20 + index * 25) * scale; ctx.font = `700 ${13 * scale}px system-ui`; ctx.fillStyle = 'rgba(255,255,255,.62)'; ctx.fillText(`GAME ${result.game}`, x + 18 * scale, rowY); ctx.font = `800 ${17 * scale}px monospace`; ctx.fillStyle = result.winner === 'A' ? '#ff7f67' : '#fff'; ctx.fillText(String(result.scoreA).padStart(2, '0'), x + boxW - 118 * scale, rowY); ctx.fillStyle = result.winner === 'B' ? '#ff7f67' : '#fff'; ctx.fillText(String(result.scoreB).padStart(2, '0'), x + boxW - 69 * scale, rowY); });
   }
   function drawSponsorOverlay(ctx, width, height) {
-    const scale = width / 1280; const right = width - 22 * scale; const bottom = height - 20 * scale;
-    ctx.textAlign = 'right'; ctx.font = `600 ${14 * scale}px system-ui`; ctx.fillStyle = 'rgba(255,255,255,.82)'; ctx.fillText('sponsored by', right, bottom - 28 * scale);
-    ctx.font = `900 italic ${34 * scale}px Arial, sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText('SPORT', right - 92 * scale, bottom);
-    ctx.fillStyle = '#e5323b'; ctx.fillText('CAM', right, bottom);
-    ctx.textAlign = 'start';
+    if (!sponsorLogo.complete || !sponsorLogo.naturalWidth) return;
+    const scale = width / 1280; const panelW = 250 * scale; const panelH = 235 * scale; const x = width - panelW - 18 * scale; const y = height - panelH - 18 * scale;
+    ctx.fillStyle = 'rgba(0, 0, 0, .8)'; roundedRect(ctx, x, y, panelW, panelH, 12 * scale); ctx.fill();
+    ctx.textAlign = 'center'; ctx.font = `600 ${13 * scale}px system-ui`; ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fillText('sponsored by', x + panelW / 2, y + 22 * scale);
+    const maxW = panelW - 20 * scale; const maxH = panelH - 34 * scale; const ratio = sponsorLogo.naturalWidth / sponsorLogo.naturalHeight; const logoW = Math.min(maxW, maxH * ratio); const logoH = logoW / ratio;
+    ctx.drawImage(sponsorLogo, x + (panelW - logoW) / 2, y + 29 * scale, logoW, logoH); ctx.textAlign = 'start';
   }
   function updateCanvas() {
     const canvas = $('#broadcastCanvas'); const video = $('#cameraVideo'); if (!canvas || !video.videoWidth) return;
