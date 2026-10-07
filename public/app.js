@@ -161,12 +161,15 @@
     }
   }
   async function pollRelayStatus(sessionId) {
-    for (let attempt = 0; attempt < 12 && state.stream.sessionId === sessionId && state.stream.running; attempt += 1) {
+    let reconnectNoticeShown = false;
+    while (state.stream.sessionId === sessionId && state.stream.running) {
       await new Promise(resolve => window.setTimeout(resolve, 1500));
       try {
         const response = await fetch(`/api/stream/${sessionId}/status`); const status = await response.json();
-        if (status.lastError) { toast(`ปลายทางไม่รับสัญญาณ: ${status.lastError}`); return; }
-        if (!status.running) { toast('Relay หยุดทำงาน — ตรวจ Stream Key และ Live Producer'); return; }
+        if (status.reconnecting && !reconnectNoticeShown) { reconnectNoticeShown = true; toast(`สัญญาณขัดข้อง — กำลังเชื่อมต่อ relay ใหม่ (ครั้งที่ ${status.reconnectAttempts})`); }
+        if (!status.reconnecting) reconnectNoticeShown = false;
+        if (status.failed) { toast(`Relay เชื่อมต่อใหม่ไม่สำเร็จ: ${status.lastError || 'ตรวจ Stream Key และ Live Producer'}`); return; }
+        if (response.status === 404) { toast('Relay ไม่พบเซสชัน — กรุณาเริ่มถ่ายทอดสดใหม่'); return; }
       } catch {}
     }
   }

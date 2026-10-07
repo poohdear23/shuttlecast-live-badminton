@@ -13,8 +13,12 @@ const loginFailures = new Map();
 const AUTH_COOKIE = 'shuttlecast_session';
 const AUTH_TTL_MS = 8 * 60 * 60 * 1000;
 const PASSWORD_MIN_LENGTH = 8;
-const OWNER_SECRET_CODE = 'TheSmokery';
+const OWNER_SECRET_CODE = process.env.SHUTTLECAST_ADMIN_SECRET || '';
 const AUTH_STATE_FILE = process.env.SHUTTLECAST_AUTH_FILE || path.join(__dirname, '.shuttlecast-auth.json');
+const AUDIT_LOG_FILE = process.env.SHUTTLECAST_AUDIT_FILE || path.join(__dirname, '.shuttlecast-audit.jsonl');
+const MAX_RECONNECT_ATTEMPTS = 6;
+const RECONNECT_BASE_DELAY_MS = 1500;
+const MAX_RECONNECT_BUFFER_BYTES = 8 * 1024 * 1024;
 let passwordRecord = loadPasswordRecord();
 
 const mime = {
@@ -36,6 +40,14 @@ function sendJson(res, status, data, headers = {}) {
   });
   res.end(body);
 }
+
+function writeAudit(event, details = {}) {
+  const entry = { timestamp: new Date().toISOString(), event, ...details };
+  try { fs.appendFileSync(AUDIT_LOG_FILE, `${JSON.stringify(entry)}\n`, { encoding: 'utf8', mode: 0o600 }); } catch (error) { console.error(`[audit] could not write log: ${error.message}`); }
+}
+function requestFingerprint(req) { return crypto.createHash('sha256').update(req.socket.remoteAddress || 'unknown').digest('hex').slice(0, 12); }
+function auditRequest(req, event, details = {}) { writeAudit(event, { ipHash: requestFingerprint(req), ...details }); }
+function auditSession(session, event, details = {}) { writeAudit(event, { ipHash: session.ipHash, ...details }); }
 
 function createPasswordRecord(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -120,16 +132,93 @@ function startRelay(targets) {
   return spawn(FFMPEG, args, { stdio: ['pipe', 'ignore', 'pipe'] });
 }
 
+function flushRelayBuffer(session) {
+  while (session.pendingChunks.length && session.process?.stdin?.writable) {
+    const chunk = session.pendingChunks.shift();
+    session.pendingBytes -= chunk.length;
+    session.process.stdin.write(chunk);
+  }
+}
+
+function scheduleRelayReconnect(session, reason) {
+  if (session.closed || session.reconnectTimer || session.failed) return;
+  if (session.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    session.failed = true;
+    session.reconnecting = false;
+    session.lastError = 'FFmpeg relay reconnect attempts exhausted';
+    auditSession(session, 'stream_reconnect_exhausted', { sessionId: session.id, attempts: session.reconnectAttempts });
+    return;
+  }
+  const attempt = session.reconnectAttempts + 1;
+  const delay = Math.min(30000, RECONNECT_BASE_DELAY_MS * (2 ** (attempt - 1)));
+  session.reconnectAttempts = attempt;
+  session.reconnecting = true;
+  session.lastError = reason;
+  auditSession(session, 'stream_reconnect_scheduled', { sessionId: session.id, attempt, delayMs: delay, reason });
+  session.reconnectTimer = setTimeout(() => {
+    session.reconnectTimer = null;
+    if (!session.closed) launchRelay(session, true);
+  }, delay);
+}
+
+function launchRelay(session, isReconnect = false) {
+  if (session.closed) return;
+  const relay = startRelay(session.targetUrls);
+  session.process = relay;
+  session.input = relay.stdin;
+  session.reconnecting = false;
+  session.failed = false;
+  let handledExit = false;
+  const handleRelayFailure = (reason) => {
+    if (handledExit || session.closed) return;
+    handledExit = true;
+    session.lastError = reason;
+    scheduleRelayReconnect(session, reason);
+  };
+  relay.on('error', error => handleRelayFailure(error.code || 'ffmpeg_error'));
+  relay.stdin.on('error', error => handleRelayFailure(error.code || 'relay_input_error'));
+  relay.stderr.on('data', chunk => {
+    const text = String(chunk).replace(/rtmps?:\/\/[^\s]+/gi, 'RTMP_TARGET').trim();
+    if (/error|failed|unable|reject|denied/i.test(text)) { session.lastError = text.slice(-500); console.error(`[relay ${session.id}] ${text}`); }
+  });
+  relay.on('close', (code, signal) => {
+    if (session.closed) return;
+    const reason = session.lastError || `ffmpeg_exit_${code ?? 'unknown'}${signal ? `_${signal}` : ''}`;
+    handleRelayFailure(reason);
+  });
+  if (isReconnect) auditSession(session, 'stream_reconnect_started', { sessionId: session.id, attempt: session.reconnectAttempts });
+  clearTimeout(session.stableTimer);
+  session.stableTimer = setTimeout(() => { session.reconnectAttempts = 0; }, 10000);
+  flushRelayBuffer(session);
+}
+
 function stopSession(session) {
   if (!session) return;
   session.closed = true;
+  session.reconnecting = false;
+  clearTimeout(session.reconnectTimer);
+  clearTimeout(session.stableTimer);
   try { session.input.end(); } catch {}
   const killTimer = setTimeout(() => {
     try { session.process.kill('SIGKILL'); } catch {}
   }, 2500);
-  session.process.once('close', () => clearTimeout(killTimer));
+  session.process?.once('close', () => clearTimeout(killTimer));
   sessions.delete(session.id);
+  auditSession(session, 'stream_stopped', { sessionId: session.id });
 }
+
+function writeRelayChunk(session, chunk) {
+  if (session.process?.stdin?.writable && !session.reconnecting) return session.process.stdin.write(chunk);
+  const buffered = Buffer.from(chunk);
+  session.pendingChunks.push(buffered);
+  session.pendingBytes += buffered.length;
+  while (session.pendingBytes > MAX_RECONNECT_BUFFER_BYTES && session.pendingChunks.length) {
+    session.pendingBytes -= session.pendingChunks.shift().length;
+    session.bufferDrops = (session.bufferDrops || 0) + 1;
+  }
+  return true;
+}
+
 
 function routeApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/auth/status') {
@@ -139,32 +228,32 @@ function routeApi(req, res, url) {
     return readJson(req).then(body => {
       if (passwordRecord) return sendJson(res, 409, { ok: false, error: 'ตั้งรหัสผ่านแล้ว กรุณาเข้าสู่ระบบ' });
       if (!validPassword(body.password)) return sendJson(res, 400, { ok: false, error: `รหัสผ่านต้องมี ${PASSWORD_MIN_LENGTH}-${128} ตัวอักษร` });
-      passwordRecord = createPasswordRecord(body.password); savePasswordRecord(); issueAuthSession(res); return sendJson(res, 200, { ok: true, authenticated: true });
+      passwordRecord = createPasswordRecord(body.password); savePasswordRecord(); issueAuthSession(res); auditRequest(req, 'auth_setup_completed'); return sendJson(res, 200, { ok: true, authenticated: true });
     }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'setup_failed' }));
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/login') {
     return readJson(req).then(body => {
-      if (loginRateLimited(req)) return sendJson(res, 429, { ok: false, error: 'ลองรหัสผ่านผิดหลายครั้ง กรุณารอ 15 นาที' });
-      if (!passwordRecord || !verifyPassword(body.password, passwordRecord)) { registerLoginFailure(req); return sendJson(res, 401, { ok: false, error: 'รหัสผ่านไม่ถูกต้อง' }); }
-      clearLoginFailures(req); issueAuthSession(res); return sendJson(res, 200, { ok: true, authenticated: true });
+      if (loginRateLimited(req)) { auditRequest(req, 'auth_login_rate_limited'); return sendJson(res, 429, { ok: false, error: 'ลองรหัสผ่านผิดหลายครั้ง กรุณารอ 15 นาที' }); }
+      if (!passwordRecord || !verifyPassword(body.password, passwordRecord)) { registerLoginFailure(req); auditRequest(req, 'auth_login_failed'); return sendJson(res, 401, { ok: false, error: 'รหัสผ่านไม่ถูกต้อง' }); }
+      clearLoginFailures(req); issueAuthSession(res); auditRequest(req, 'auth_login_succeeded'); return sendJson(res, 200, { ok: true, authenticated: true });
     }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'login_failed' }));
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
-    const token = currentAuthSession(req)?.token; if (token) authSessions.delete(token); clearAuthCookie(res); return sendJson(res, 200, { ok: true });
+    const token = currentAuthSession(req)?.token; if (token) authSessions.delete(token); clearAuthCookie(res); auditRequest(req, 'auth_logout'); return sendJson(res, 200, { ok: true });
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/change-password') {
     if (!currentAuthSession(req)) return sendJson(res, 401, { ok: false, error: 'ต้องเข้าสู่ระบบก่อน' });
     return readJson(req).then(body => {
-      if (!verifyOwnerSecret(body.ownerSecret)) return sendJson(res, 403, { ok: false, error: 'Secret Code ยืนยันความเป็นเจ้าของไม่ถูกต้อง' });
+      if (!verifyOwnerSecret(body.ownerSecret)) { auditRequest(req, 'auth_password_change_secret_failed'); return sendJson(res, 403, { ok: false, error: 'Secret Code ยืนยันความเป็นเจ้าของไม่ถูกต้อง' }); }
       if (!validPassword(body.newPassword)) return sendJson(res, 400, { ok: false, error: `รหัสผ่านใหม่ต้องมี ${PASSWORD_MIN_LENGTH}-${128} ตัวอักษร` });
-      passwordRecord = createPasswordRecord(body.newPassword); savePasswordRecord(); authSessions.clear(); issueAuthSession(res); return sendJson(res, 200, { ok: true, authenticated: true });
+      passwordRecord = createPasswordRecord(body.newPassword); savePasswordRecord(); authSessions.clear(); issueAuthSession(res); auditRequest(req, 'auth_password_changed'); return sendJson(res, 200, { ok: true, authenticated: true });
     }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'change_password_failed' }));
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/reset-password') {
     return readJson(req).then(body => {
-      if (!verifyOwnerSecret(body.ownerSecret)) return sendJson(res, 403, { ok: false, error: 'Secret Code ผู้ดูแลระบบไม่ถูกต้อง' });
+      if (!verifyOwnerSecret(body.ownerSecret)) { auditRequest(req, 'auth_password_reset_secret_failed'); return sendJson(res, 403, { ok: false, error: 'Secret Code ผู้ดูแลระบบไม่ถูกต้อง' }); }
       if (!validPassword(body.newPassword)) return sendJson(res, 400, { ok: false, error: `รหัสผ่านใหม่ต้องมี ${PASSWORD_MIN_LENGTH}-${128} ตัวอักษร` });
-      passwordRecord = createPasswordRecord(body.newPassword); savePasswordRecord(); authSessions.clear(); issueAuthSession(res); return sendJson(res, 200, { ok: true, authenticated: true });
+      passwordRecord = createPasswordRecord(body.newPassword); savePasswordRecord(); authSessions.clear(); issueAuthSession(res); auditRequest(req, 'auth_password_reset'); return sendJson(res, 200, { ok: true, authenticated: true });
     }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'reset_password_failed' }));
   }
   if (req.method === 'GET' && url.pathname === '/api/health') {
@@ -179,17 +268,11 @@ function routeApi(req, res, url) {
       const targets = [body.facebook, body.youtube].map(safeRtmpUrl).filter(Boolean);
       if (!targets.length) return sendJson(res, 400, { ok: false, error: 'ต้องมี RTMP URL อย่างน้อยหนึ่งปลายทาง' });
       if (targets.length > 2) return sendJson(res, 400, { ok: false, error: 'รองรับสูงสุดสองปลายทาง' });
-      const process = startRelay(targets);
       const id = crypto.randomUUID();
-      const session = { id, process, input: process.stdin, targets: targets.length, closed: false, startedAt: Date.now() };
-      process.on('error', error => { session.error = error.code || 'ffmpeg_error'; session.closed = true; sessions.delete(id); });
-      process.stdin.on('error', () => { session.closed = true; sessions.delete(id); });
-      process.stderr.on('data', chunk => {
-        const text = String(chunk).replace(/rtmps?:\/\/[^\s]+/gi, 'RTMP_TARGET').trim();
-        if (/error|failed|unable|reject|denied/i.test(text)) { session.lastError = text.slice(-500); console.error(`[relay ${id}] ${text}`); }
-      });
-      process.on('close', () => { session.closed = true; sessions.delete(id); });
+      const session = { id, targetUrls: targets, targets: targets.length, closed: false, failed: false, reconnecting: false, reconnectAttempts: 0, pendingChunks: [], pendingBytes: 0, startedAt: Date.now(), ipHash: requestFingerprint(req) };
+      launchRelay(session);
       sessions.set(id, session);
+      auditRequest(req, 'stream_started', { sessionId: id, targets: targets.length });
       return sendJson(res, 200, { ok: true, sessionId: id, targets: targets.length, status: 'relay_ready' });
     }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'start_failed' }));
   }
@@ -198,14 +281,15 @@ function routeApi(req, res, url) {
   if (req.method === 'GET' && statusMatch) {
     const session = sessions.get(statusMatch[1]);
     if (!session) return sendJson(res, 404, { ok: false, error: 'session_not_found' });
-    return sendJson(res, 200, { ok: true, running: !session.closed, targets: session.targets, lastError: session.lastError || null });
+    return sendJson(res, 200, { ok: true, running: !session.closed && !session.failed && !session.reconnecting, reconnecting: session.reconnecting, failed: session.failed, reconnectAttempts: session.reconnectAttempts, bufferedBytes: session.pendingBytes, bufferDrops: session.bufferDrops || 0, targets: session.targets, lastError: session.failed ? session.lastError || null : null });
   }
 
   const chunkMatch = url.pathname.match(/^\/api\/stream\/([^/]+)\/chunk$/);
   if (req.method === 'POST' && chunkMatch) {
     const session = sessions.get(chunkMatch[1]);
-    if (!session || session.closed || !session.input.writable) return sendJson(res, 404, { ok: false, error: 'session_not_found' });
-    req.on('data', chunk => { if (!session.closed) session.input.write(chunk); });
+    if (!session || session.closed) return sendJson(res, 404, { ok: false, error: 'session_not_found' });
+    if (session.failed) return sendJson(res, 503, { ok: false, error: 'relay_reconnect_failed' });
+    req.on('data', chunk => { if (!session.closed) writeRelayChunk(session, chunk); });
     req.on('end', () => sendJson(res, 200, { ok: true }));
     req.on('error', () => { stopSession(session); });
     return;
