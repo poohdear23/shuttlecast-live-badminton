@@ -30,6 +30,17 @@ body.auth-locked .app-shell { display: none; }
 .auth-card .field-label { margin-top: 14px; }
 .auth-card .primary-button { margin-top: 18px; }
 .auth-error { min-height: 18px; color: var(--coral); font-size: 11px; line-height: 1.5; margin: 12px 0 0; }
+.auth-reset-trigger { width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px; border: 0; background: transparent; color: var(--muted); margin-top: 17px; padding: 8px; font-size: 11px; font-weight: 800; }
+.auth-reset-trigger:hover { color: var(--ink); }
+.reset-key-icon { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--mint); font-size: 16px; line-height: 1; }
+.auth-reset-panel { margin-top: 18px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: rgba(12, 10, 8, .32); }
+.auth-reset-heading { display: grid; gap: 5px; margin-bottom: 8px; }
+.auth-reset-heading strong { font-size: 17px; letter-spacing: -.03em; }
+.auth-reset-copy { color: var(--muted); font-size: 11px; line-height: 1.55; margin: 0 0 13px; }
+.auth-reset-panel .field-label { margin-top: 12px; }
+.auth-reset-panel .text-input { height: 42px; }
+.auth-reset-actions { display: flex; gap: 8px; margin-top: 13px; }
+.auth-reset-actions button { flex: 1; min-height: 42px; padding: 0 10px; font-size: 10px; }
 .security-button { width: auto; min-width: 82px; padding: 0 10px; border-radius: 10px; font-size: 10px; font-weight: 800; letter-spacing: .02em; color: var(--gold); }
 button, input { font: inherit; }
 button { cursor: pointer; }

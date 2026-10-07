@@ -23,6 +23,21 @@
         <button class="primary-button full" id="authSubmit" type="submit">เข้าสู่ระบบ</button>
       </form>
       <p class="auth-error" id="authError" role="alert"></p>
+      <button class="auth-reset-trigger" id="adminResetButton" type="button"><span class="reset-key-icon" aria-hidden="true">↻</span><span>รีเซ็ตรหัสผ่านผู้ดูแลระบบ</span></button>
+      <div class="auth-reset-panel" id="adminResetPanel" hidden>
+        <div class="auth-reset-heading"><span class="section-label">ADMIN RECOVERY</span><strong>รีเซ็ตรหัสผ่าน</strong></div>
+        <p class="auth-reset-copy">ใช้ Secret Code ของผู้ดูแลระบบเพื่อกำหนดรหัสผ่านใหม่ ระบบจะออกจากระบบให้ผู้ใช้งานทุกคน</p>
+        <form id="adminResetForm">
+          <label class="field-label" for="adminResetSecret">Secret Code ผู้ดูแลระบบ</label>
+          <input class="text-input" id="adminResetSecret" type="password" autocomplete="off" required>
+          <label class="field-label" for="adminResetPassword">รหัสผ่านใหม่</label>
+          <input class="text-input" id="adminResetPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
+          <label class="field-label" for="adminResetConfirm">ยืนยันรหัสผ่านใหม่</label>
+          <input class="text-input" id="adminResetConfirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
+          <p class="auth-error" id="adminResetError" role="alert"></p>
+          <div class="auth-reset-actions"><button class="secondary-button" id="cancelAdminReset" type="button">ยกเลิก</button><button class="primary-button" type="submit">รีเซ็ตและเข้าสู่ระบบ</button></div>
+        </form>
+      </div>
     </div>
   </section>
   <div class="app-shell" id="appShell" hidden>

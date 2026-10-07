@@ -160,6 +160,13 @@ function routeApi(req, res, url) {
       passwordRecord = createPasswordRecord(body.newPassword); savePasswordRecord(); authSessions.clear(); issueAuthSession(res); return sendJson(res, 200, { ok: true, authenticated: true });
     }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'change_password_failed' }));
   }
+  if (req.method === 'POST' && url.pathname === '/api/auth/reset-password') {
+    return readJson(req).then(body => {
+      if (!verifyOwnerSecret(body.ownerSecret)) return sendJson(res, 403, { ok: false, error: 'Secret Code ผู้ดูแลระบบไม่ถูกต้อง' });
+      if (!validPassword(body.newPassword)) return sendJson(res, 400, { ok: false, error: `รหัสผ่านใหม่ต้องมี ${PASSWORD_MIN_LENGTH}-${128} ตัวอักษร` });
+      passwordRecord = createPasswordRecord(body.newPassword); savePasswordRecord(); authSessions.clear(); issueAuthSession(res); return sendJson(res, 200, { ok: true, authenticated: true });
+    }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'reset_password_failed' }));
+  }
   if (req.method === 'GET' && url.pathname === '/api/health') {
     const ffmpeg = spawnSync(FFMPEG, ['-version'], { stdio: 'ignore' }).status === 0;
     return sendJson(res, ffmpeg ? 200 : 503, { ok: ffmpeg, service: 'shuttlecast-relay', ffmpeg });
