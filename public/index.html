@@ -9,7 +9,23 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div class="app-shell">
+  <section class="auth-gate" id="authGate" aria-labelledby="authTitle">
+    <div class="auth-card">
+      <div class="brand-mark auth-mark" aria-hidden="true"><span>S</span><i></i></div>
+      <p class="eyebrow">SHUTTLECAST ACCESS</p>
+      <h2 id="authTitle">เข้าสู่ ShuttleCast</h2>
+      <p class="auth-copy" id="authCopy">ใส่รหัสผ่านเพื่อเข้าใช้งานห้องควบคุมไลฟ์</p>
+      <form id="authForm">
+        <label class="field-label" for="authPassword">รหัสผ่าน</label>
+        <input class="text-input" id="authPassword" type="password" minlength="8" maxlength="128" autocomplete="current-password" required>
+        <label class="field-label auth-confirm-label" for="authPasswordConfirm" hidden>ยืนยันรหัสผ่าน</label>
+        <input class="text-input auth-confirm-input" id="authPasswordConfirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" hidden>
+        <button class="primary-button full" id="authSubmit" type="submit">เข้าสู่ระบบ</button>
+      </form>
+      <p class="auth-error" id="authError" role="alert"></p>
+    </div>
+  </section>
+  <div class="app-shell" id="appShell" hidden>
     <header class="topbar">
       <div class="brand-lockup">
         <div class="brand-mark" aria-hidden="true"><span>S</span><i></i></div>
@@ -21,6 +37,7 @@
       <div class="topbar-actions">
         <span class="connection-dot" id="connectionDot"></span>
         <span class="connection-label" id="connectionLabel">พร้อมตั้งค่า</span>
+        <button class="icon-button security-button" id="securityButton" aria-label="ตั้งค่าความปลอดภัย">⌑</button>
         <button class="icon-button" id="helpButton" aria-label="เปิดคำแนะนำ">?</button>
       </div>
     </header>
@@ -151,6 +168,20 @@
         <div class="destination-form-card facebook-card"><div class="platform-heading"><span class="platform-icon facebook">f</span><strong>Facebook Live</strong><label class="switch"><input type="checkbox" id="facebookEnabled" checked><span></span></label></div><label class="field-label" for="facebookUrl">RTMP URL</label><input class="text-input mono" id="facebookUrl" value="rtmps://live-api-s.facebook.com:443/rtmp/" autocomplete="off"><label class="field-label" for="facebookKey">Stream Key</label><input class="text-input mono secret-input" id="facebookKey" type="password" placeholder="วาง Stream Key ที่นี่" autocomplete="off"></div>
         <div class="destination-form-card youtube-card"><div class="platform-heading"><span class="platform-icon youtube">▶</span><strong>YouTube Live</strong><label class="switch"><input type="checkbox" id="youtubeEnabled" checked><span></span></label></div><label class="field-label" for="youtubeUrl">RTMP URL</label><input class="text-input mono" id="youtubeUrl" value="rtmps://a.rtmp.youtube.com/live2/" autocomplete="off"><label class="field-label" for="youtubeKey">Stream Key</label><input class="text-input mono secret-input" id="youtubeKey" type="password" placeholder="วาง Stream Key ที่นี่" autocomplete="off"></div>
         <div class="modal-actions"><button class="secondary-button" id="cancelModal">ยกเลิก</button><button class="primary-button" id="saveDestinations">บันทึกปลายทาง</button></div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="securityModal" hidden>
+      <section class="modal panel" role="dialog" aria-modal="true" aria-labelledby="securityTitle">
+        <div class="modal-heading"><div><p class="section-label">SECURITY</p><h3 id="securityTitle">ตั้งค่าความปลอดภัย</h3></div><button class="close-button" id="closeSecurity" type="button">×</button></div>
+        <p class="modal-intro">เปลี่ยนรหัสผ่านสำหรับผู้ควบคุม ShuttleCast รหัสผ่านใหม่จะทำให้ Session อื่นออกจากระบบทั้งหมด</p>
+        <form id="changePasswordForm">
+          <label class="field-label" for="currentPassword">รหัสผ่านปัจจุบัน</label><input class="text-input" id="currentPassword" type="password" autocomplete="current-password" required>
+          <label class="field-label" for="newPassword">รหัสผ่านใหม่</label><input class="text-input" id="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
+          <label class="field-label" for="confirmPassword">ยืนยันรหัสผ่านใหม่</label><input class="text-input" id="confirmPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
+          <p class="auth-error" id="changePasswordError" role="alert"></p>
+          <div class="modal-actions"><button class="secondary-button" id="logoutButton" type="button">ออกจากระบบ</button><button class="primary-button" type="submit">บันทึกรหัสผ่านใหม่</button></div>
+        </form>
       </section>
     </div>
 

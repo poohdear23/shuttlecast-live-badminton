@@ -53,3 +53,10 @@
 
 ## ส่วนเชื่อมต่อกับบริการ
 ระบบจะรับ RTMP URL และ Stream Key จากผู้ใช้โดยตรงและส่งต่อจาก backend ไปยังปลายทางที่เลือก การยืนยันว่าแพลตฟอร์มขึ้น LIVE สำเร็จขึ้นกับการตอบรับของ Facebook/YouTube และควรตรวจซ้ำในแดชบอร์ดของแพลตฟอร์ม
+
+## ความปลอดภัยของแอป
+- Password Gate ฝั่ง Server สำหรับตั้งรหัสครั้งแรกและเข้าสู่ระบบ
+- Session Cookie แบบ HttpOnly, Secure, SameSite=None อายุ 8 ชั่วโมง
+- ป้องกัน Stream API ทุกเส้นทางด้วย Session และจำกัดการลองรหัสผิด
+- เปลี่ยนรหัสผ่านได้จาก Security panel และทำให้ Session อื่นหมดอายุ
+- เก็บเฉพาะ scrypt password hash ในไฟล์ runtime ที่ไม่อยู่ใน Git; Production หลาย instance ควรย้ายไป Secret/Database ที่ durable
