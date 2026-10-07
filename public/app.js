@@ -80,11 +80,11 @@
   }
   function drawSponsorOverlay(ctx, width, height) {
     if (!sponsorLogo.complete || !sponsorLogo.naturalWidth) return;
-    const scale = width / 1280; const panelW = 250 * scale; const panelH = 235 * scale; const x = width - panelW - 18 * scale; const y = height - panelH - 18 * scale;
-    ctx.fillStyle = 'rgba(0, 0, 0, .8)'; roundedRect(ctx, x, y, panelW, panelH, 12 * scale); ctx.fill();
-    ctx.textAlign = 'center'; ctx.font = `600 ${13 * scale}px system-ui`; ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fillText('sponsored by', x + panelW / 2, y + 22 * scale);
-    const maxW = panelW - 20 * scale; const maxH = panelH - 34 * scale; const ratio = sponsorLogo.naturalWidth / sponsorLogo.naturalHeight; const logoW = Math.min(maxW, maxH * ratio); const logoH = logoW / ratio;
-    ctx.drawImage(sponsorLogo, x + (panelW - logoW) / 2, y + 29 * scale, logoW, logoH); ctx.textAlign = 'start';
+    const scale = width / 1280; const panelW = 125 * scale; const panelH = 117.5 * scale; const x = width - panelW - 18 * scale; const y = height - panelH - 18 * scale;
+    ctx.fillStyle = 'rgba(0, 0, 0, .5)'; roundedRect(ctx, x, y, panelW, panelH, 6 * scale); ctx.fill();
+    ctx.textAlign = 'center'; ctx.font = `600 ${6.5 * scale}px system-ui`; ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fillText('sponsored by', x + panelW / 2, y + 11 * scale);
+    const maxW = panelW - 10 * scale; const maxH = panelH - 17 * scale; const ratio = sponsorLogo.naturalWidth / sponsorLogo.naturalHeight; const logoW = Math.min(maxW, maxH * ratio); const logoH = logoW / ratio;
+    ctx.drawImage(sponsorLogo, x + (panelW - logoW) / 2, y + 14.5 * scale, logoW, logoH); ctx.textAlign = 'start';
   }
   function updateCanvas() {
     const canvas = $('#broadcastCanvas'); const video = $('#cameraVideo'); if (!canvas || !video.videoWidth) return;
