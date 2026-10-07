@@ -1,5 +1,5 @@
 {
-  "name": "rallycast-live-badminton",
+  "name": "shuttlecast-live-badminton",
   "version": "0.1.0",
   "private": true,
   "description": "Mobile-first badminton livestream control room with simultaneous Facebook and YouTube RTMP relay.",

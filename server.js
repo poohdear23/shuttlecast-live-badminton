@@ -84,7 +84,7 @@ function stopSession(session) {
 function routeApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/health') {
     const ffmpeg = spawnSync(FFMPEG, ['-version'], { stdio: 'ignore' }).status === 0;
-    return sendJson(res, ffmpeg ? 200 : 503, { ok: ffmpeg, service: 'rallycast-relay', ffmpeg });
+    return sendJson(res, ffmpeg ? 200 : 503, { ok: ffmpeg, service: 'shuttlecast-relay', ffmpeg });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/stream/start') {
@@ -163,7 +163,7 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res, url);
 });
 
-server.listen(PORT, '0.0.0.0', () => console.log(`RallyCast listening on 0.0.0.0:${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`ShuttleCast listening on 0.0.0.0:${PORT}`));
 
 process.on('SIGTERM', () => {
   for (const session of sessions.values()) stopSession(session);
