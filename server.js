@@ -13,6 +13,7 @@ const loginFailures = new Map();
 const AUTH_COOKIE = 'shuttlecast_session';
 const AUTH_TTL_MS = 8 * 60 * 60 * 1000;
 const PASSWORD_MIN_LENGTH = 8;
+const OWNER_SECRET_CODE = 'TheSmokery';
 const AUTH_STATE_FILE = process.env.SHUTTLECAST_AUTH_FILE || path.join(__dirname, '.shuttlecast-auth.json');
 let passwordRecord = loadPasswordRecord();
 
@@ -53,6 +54,12 @@ function verifyPassword(password, record) {
   if (!record || typeof password !== 'string') return false;
   const expected = Buffer.from(record.hash, 'hex');
   const actual = crypto.scryptSync(password, record.salt, expected.length);
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+function verifyOwnerSecret(secret) {
+  if (typeof secret !== 'string') return false;
+  const expected = Buffer.from(OWNER_SECRET_CODE, 'utf8');
+  const actual = Buffer.from(secret, 'utf8');
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 function validPassword(password) { return typeof password === 'string' && password.length >= PASSWORD_MIN_LENGTH && password.length <= 128; }
@@ -148,6 +155,7 @@ function routeApi(req, res, url) {
   if (req.method === 'POST' && url.pathname === '/api/auth/change-password') {
     if (!currentAuthSession(req)) return sendJson(res, 401, { ok: false, error: 'ต้องเข้าสู่ระบบก่อน' });
     return readJson(req).then(body => {
+      if (!verifyOwnerSecret(body.ownerSecret)) return sendJson(res, 403, { ok: false, error: 'Secret Code ยืนยันความเป็นเจ้าของไม่ถูกต้อง' });
       if (!verifyPassword(body.currentPassword, passwordRecord)) return sendJson(res, 401, { ok: false, error: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' });
       if (!validPassword(body.newPassword)) return sendJson(res, 400, { ok: false, error: `รหัสผ่านใหม่ต้องมี ${PASSWORD_MIN_LENGTH}-${128} ตัวอักษร` });
       passwordRecord = createPasswordRecord(body.newPassword); savePasswordRecord(); authSessions.clear(); issueAuthSession(res); return sendJson(res, 200, { ok: true, authenticated: true });
