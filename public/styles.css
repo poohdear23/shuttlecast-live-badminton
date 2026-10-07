@@ -30,7 +30,7 @@ body.auth-locked .app-shell { display: none; }
 .auth-card .field-label { margin-top: 14px; }
 .auth-card .primary-button { margin-top: 18px; }
 .auth-error { min-height: 18px; color: var(--coral); font-size: 11px; line-height: 1.5; margin: 12px 0 0; }
-.security-button { font-size: 16px; }
+.security-button { width: auto; min-width: 82px; padding: 0 10px; border-radius: 10px; font-size: 10px; font-weight: 800; letter-spacing: .02em; color: var(--gold); }
 button, input { font: inherit; }
 button { cursor: pointer; }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
