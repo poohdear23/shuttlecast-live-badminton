@@ -214,9 +214,26 @@ main { padding: 44px 0 20px; }
 .modal-backdrop { position: fixed; z-index: 10; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(2, 5, 10, .76); backdrop-filter: blur(10px); }
 .modal-backdrop[hidden] { display: none; }
 .modal { width: min(520px, 100%); max-height: 92vh; overflow: auto; padding: 23px; }
+.help-modal { width: min(680px, 100%); }
 .modal-heading { justify-content: space-between; }
 .close-button { font-size: 22px; width: 34px; height: 34px; }
 .modal-intro { color: var(--muted); font-size: 12px; line-height: 1.65; margin: 19px 0; }
+.guide-section { margin-top: 18px; padding: 15px 16px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.02); }
+.guide-section-heading { display: flex; align-items: center; gap: 11px; margin-bottom: 11px; }
+.guide-section-heading > div { display: grid; gap: 3px; }
+.guide-section-heading strong { color: var(--ink); font-size: 13px; }
+.guide-section-heading span:not(.guide-number):not(.platform-icon) { color: var(--muted-2); font-size: 10px; }
+.guide-number { display: grid; place-items: center; width: 31px; height: 31px; flex: 0 0 auto; border: 1px solid rgba(211,169,79,.42); border-radius: 9px; color: var(--mint); font: 800 10px var(--mono); }
+.guide-list, .guide-troubleshooting ul { margin: 0; padding-left: 21px; color: var(--muted); font-size: 11px; line-height: 1.7; }
+.guide-list li, .guide-troubleshooting li { padding: 2px 0; }
+.guide-list strong, .guide-troubleshooting strong { color: var(--ink); }
+.guide-platform { border-left: 2px solid var(--mint); }
+.facebook-guide { border-left-color: #1877f2; }
+.youtube-guide { border-left-color: #e62117; }
+.guide-tip { margin: 12px 0 0; padding: 10px 11px; border-radius: 9px; color: var(--muted); background: rgba(211,169,79,.08); font-size: 10px; line-height: 1.6; }
+.guide-tip strong { color: var(--mint); }
+.guide-troubleshooting { margin-top: 18px; padding: 15px 16px; border: 1px dashed rgba(211,169,79,.42); border-radius: 13px; }
+.guide-troubleshooting > strong { display: block; margin-bottom: 8px; color: var(--mint); font-size: 12px; }
 .destination-form-card { padding: 14px; border-radius: 13px; background: rgba(255,255,255,.025); border: 1px solid var(--line); margin-top: 11px; }
 .facebook-card { border-left: 2px solid #1877f2; }
 .youtube-card { border-left: 2px solid #e62117; }
@@ -273,6 +290,12 @@ main { padding: 44px 0 20px; }
   .score-side strong { font-size: 11px; }
   .score-actions { flex-wrap: wrap; }
   .text-button { font-size: 9px; }
+  .modal-backdrop { padding: 10px; }
+  .modal { max-height: 94vh; padding: 17px; }
+  .help-modal { width: 100%; }
+  .guide-section { padding: 13px; margin-top: 13px; }
+  .guide-section-heading strong { font-size: 12px; }
+  .guide-list, .guide-troubleshooting ul { font-size: 10px; line-height: 1.65; }
   .site-footer { flex-wrap: wrap; justify-content: center; padding-top: 24px; }
   .sponsor-footer { order: -1; width: 100%; justify-content: center; }
 }
