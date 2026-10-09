@@ -8,18 +8,12 @@ const PORT = Number(process.env.PORT || 3000);
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const sessions = new Map();
-const authSessions = new Map();
-const loginFailures = new Map();
-const AUTH_COOKIE = 'shuttlecast_session';
-const AUTH_TTL_MS = 8 * 60 * 60 * 1000;
-const PASSWORD_MIN_LENGTH = 8;
-const OWNER_SECRET_CODE = process.env.SHUTTLECAST_ADMIN_SECRET || '';
-const AUTH_STATE_FILE = process.env.SHUTTLECAST_AUTH_FILE || path.join(__dirname, '.shuttlecast-auth.json');
 const AUDIT_LOG_FILE = process.env.SHUTTLECAST_AUDIT_FILE || path.join(__dirname, '.shuttlecast-audit.jsonl');
 const MAX_RECONNECT_ATTEMPTS = 6;
 const RECONNECT_BASE_DELAY_MS = 1500;
 const MAX_RECONNECT_BUFFER_BYTES = 8 * 1024 * 1024;
-let passwordRecord = loadPasswordRecord();
+const MAX_CHUNK_BYTES = 16 * 1024 * 1024;
+const DEFAULT_VIDEO_KBPS = 4500;
 
 const mime = {
   '.html': 'text/html; charset=utf-8',
@@ -49,48 +43,6 @@ function requestFingerprint(req) { return crypto.createHash('sha256').update(req
 function auditRequest(req, event, details = {}) { writeAudit(event, { ipHash: requestFingerprint(req), ...details }); }
 function auditSession(session, event, details = {}) { writeAudit(event, { ipHash: session.ipHash, ...details }); }
 
-function createPasswordRecord(password) {
-  const salt = crypto.randomBytes(16).toString('hex');
-  return { salt, hash: crypto.scryptSync(password, salt, 64).toString('hex') };
-}
-function loadPasswordRecord() {
-  if (process.env.SHUTTLECAST_ADMIN_PASSWORD) return createPasswordRecord(process.env.SHUTTLECAST_ADMIN_PASSWORD);
-  try { const record = JSON.parse(fs.readFileSync(AUTH_STATE_FILE, 'utf8')); if (record?.salt && record?.hash) return record; } catch {}
-  return null;
-}
-function savePasswordRecord() {
-  if (process.env.SHUTTLECAST_ADMIN_PASSWORD) return;
-  try { fs.writeFileSync(AUTH_STATE_FILE, JSON.stringify(passwordRecord), { encoding: 'utf8', mode: 0o600 }); } catch (error) { console.error(`[auth] could not persist password hash: ${error.message}`); }
-}
-function verifyPassword(password, record) {
-  if (!record || typeof password !== 'string') return false;
-  const expected = Buffer.from(record.hash, 'hex');
-  const actual = crypto.scryptSync(password, record.salt, expected.length);
-  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
-}
-function verifyOwnerSecret(secret) {
-  if (typeof secret !== 'string') return false;
-  const expected = Buffer.from(OWNER_SECRET_CODE, 'utf8');
-  const actual = Buffer.from(secret, 'utf8');
-  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
-}
-function validPassword(password) { return typeof password === 'string' && password.length >= PASSWORD_MIN_LENGTH && password.length <= 128; }
-function parseCookies(req) {
-  return Object.fromEntries((req.headers.cookie || '').split(';').map(part => part.trim().split('=')) .filter(pair => pair.length === 2).map(([key, ...value]) => [key, decodeURIComponent(value.join('='))]));
-}
-function currentAuthSession(req) {
-  const token = parseCookies(req)[AUTH_COOKIE]; const session = token && authSessions.get(token);
-  if (!session) return null;
-  if (session.expiresAt <= Date.now()) { authSessions.delete(token); return null; }
-  return { token, ...session };
-}
-function setAuthCookie(res, token) { res.setHeader('Set-Cookie', `${AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${AUTH_TTL_MS / 1000}`); }
-function clearAuthCookie(res) { res.setHeader('Set-Cookie', `${AUTH_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0`); }
-function issueAuthSession(res) { const token = crypto.randomBytes(32).toString('hex'); authSessions.set(token, { createdAt: Date.now(), expiresAt: Date.now() + AUTH_TTL_MS }); setAuthCookie(res, token); }
-function loginRateLimited(req) { const ip = req.socket.remoteAddress || 'unknown'; const record = loginFailures.get(ip); if (!record || record.resetAt <= Date.now()) return false; return record.count >= 5; }
-function registerLoginFailure(req) { const ip = req.socket.remoteAddress || 'unknown'; const record = loginFailures.get(ip); if (!record || record.resetAt <= Date.now()) loginFailures.set(ip, { count: 1, resetAt: Date.now() + 15 * 60 * 1000 }); else record.count += 1; }
-function clearLoginFailures(req) { loginFailures.delete(req.socket.remoteAddress || 'unknown'); }
-
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let raw = '';
@@ -115,21 +67,47 @@ function safeRtmpUrl(value) {
 }
 
 function makeTeeOutput(targets) {
-  return targets.map(url => `[f=flv:onfail=ignore]${url}`).join('|');
+  return targets.map(url => `[f=flv:flvflags=no_duration_filesize:onfail=ignore]${url}`).join('|');
 }
 
-function startRelay(targets) {
+function sanitizeRelayLog(text) {
+  return String(text)
+    .replace(/rtmps?:\/\/[^\s'"]*facebook[^\s'"]*/gi, 'FACEBOOK_TARGET')
+    .replace(/rtmps?:\/\/[^\s'"]*youtube[^\s'"]*/gi, 'YOUTUBE_TARGET')
+    .replace(/rtmps?:\/\/[^\s'"]+/gi, 'RTMP_TARGET')
+    .trim();
+}
+
+function clampKbps(value) {
+  const kbps = Math.round(Number(value) / 1000);
+  if (!Number.isFinite(kbps) || kbps <= 0) return DEFAULT_VIDEO_KBPS;
+  return Math.max(1000, Math.min(6000, kbps));
+}
+
+function startRelay(session) {
+  const targets = session.targetUrls;
+  const kbps = session.videoKbps;
   const args = [
-    '-hide_banner', '-loglevel', 'warning',
-    '-f', 'webm', '-i', 'pipe:0',
-    '-map', '0:v:0', '-map', '0:a:0?',
-    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-b:v', '6000k', '-maxrate', '6000k', '-bufsize', '12000k',
-    '-profile:v', 'high', '-level:v', '4.1', '-pix_fmt', 'yuv420p', '-r', '30', '-g', '60', '-keyint_min', '60',
-    '-c:a', 'aac', '-ar', '44100', '-b:a', '160k'
+    '-hide_banner', '-loglevel', 'warning', '-nostats', '-progress', 'pipe:1', '-stats_period', '1',
+    '-thread_queue_size', '1024', '-fflags', '+genpts', '-f', 'webm', '-i', 'pipe:0'
   ];
-  if (targets.length === 1) args.push('-flvflags', 'no_duration_filesize', '-rtmp_live', 'live', '-f', 'flv', targets[0]);
+  // Facebook Live rejects video-only streams, so inject silence when the browser has no mic track.
+  if (!session.hasAudio) args.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
+  args.push(
+    '-map', '0:v:0', '-map', session.hasAudio ? '0:a:0' : '1:a:0',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency',
+    '-b:v', `${kbps}k`, '-maxrate', `${kbps}k`, '-bufsize', `${kbps * 2}k`,
+    '-profile:v', 'high', '-level:v', '4.1', '-pix_fmt', 'yuv420p',
+    '-fps_mode', 'cfr', '-r', '30', '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
+    '-force_key_frames', 'expr:gte(t,n_forced*2)',
+    '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-b:a', '128k',
+    // Required for the tee muxer: FLV outputs need H.264/AAC extradata in the stream header.
+    '-flags', '+global_header', '-max_muxing_queue_size', '1024'
+  );
+  if (!session.hasAudio) args.push('-shortest');
+  if (targets.length === 1) args.push('-f', 'flv', '-flvflags', 'no_duration_filesize', targets[0]);
   else args.push('-f', 'tee', makeTeeOutput(targets));
-  return spawn(FFMPEG, args, { stdio: ['pipe', 'ignore', 'pipe'] });
+  return spawn(FFMPEG, args, { stdio: ['pipe', 'pipe', 'pipe'] });
 }
 
 function flushRelayBuffer(session) {
@@ -150,11 +128,14 @@ function scheduleRelayReconnect(session, reason) {
 
 function launchRelay(session, isReconnect = false) {
   if (session.closed) return;
-  const relay = startRelay(session.targetUrls);
+  const relay = startRelay(session);
   session.process = relay;
   session.input = relay.stdin;
   session.reconnecting = false;
   session.failed = false;
+  session.relayStartedAt = Date.now();
+  session.lastProgressAt = 0;
+  session.outTimeSec = 0;
   let handledExit = false;
   const handleRelayFailure = (reason) => {
     if (handledExit || session.closed || session.restarting) return;
@@ -162,24 +143,41 @@ function launchRelay(session, isReconnect = false) {
     session.lastError = reason;
     scheduleRelayReconnect(session, reason);
   };
-  relay.on('error', error => handleRelayFailure(error.code || 'ffmpeg_error'));
+  relay.on('error', error => handleRelayFailure(error.code === 'ENOENT' ? 'ffmpeg_not_installed' : error.code || 'ffmpeg_error'));
   relay.stdin.on('error', error => handleRelayFailure(error.code || 'relay_input_error'));
+  let progressBuffer = '';
+  relay.stdout.setEncoding('utf8');
+  relay.stdout.on('data', text => {
+    progressBuffer += text;
+    const lines = progressBuffer.split('\n');
+    progressBuffer = lines.pop();
+    for (const line of lines) {
+      const [key, value] = line.trim().split('=');
+      if (key === 'total_size') { const size = Number(value); if (Number.isFinite(size)) session.bytesOut = size; }
+      if (key === 'out_time_us' || key === 'out_time_ms') {
+        const seconds = Number(value) / 1e6;
+        if (Number.isFinite(seconds) && seconds > session.outTimeSec) { session.outTimeSec = seconds; session.lastProgressAt = Date.now(); }
+      }
+    }
+  });
   relay.stderr.on('data', chunk => {
-    const text = String(chunk).replace(/rtmps?:\/\/[^\s]+/gi, 'RTMP_TARGET').trim();
-    if (/error|failed|unable|reject|denied/i.test(text)) { session.lastError = text.slice(-500); console.error(`[relay ${session.id}] ${text}`); }
+    const text = sanitizeRelayLog(chunk);
+    if (!text) return;
+    session.logTail = `${session.logTail || ''}\n${text}`.slice(-800);
+    if (/error|failed|unable|reject|denied|refused|timed out|broken pipe|i\/o error/i.test(text)) { session.lastWarning = text.slice(-400); console.error(`[relay ${session.id}] ${text}`); }
   });
   relay.on('close', (code, signal) => {
     if (session.closed) return;
-    const reason = session.lastError || `ffmpeg_exit_${code ?? 'unknown'}${signal ? `_${signal}` : ''}`;
+    const reason = session.lastWarning || `ffmpeg_exit_${code ?? 'unknown'}${signal ? `_${signal}` : ''}`;
     handleRelayFailure(reason);
   });
-  if (isReconnect) auditSession(session, 'stream_reconnect_started', { sessionId: session.id, attempt: session.reconnectAttempts });
+  if (isReconnect) auditSession(session, 'stream_reconnect_started', { sessionId: session.id, attempt: session.restartAttempts });
   clearTimeout(session.stableTimer);
-  session.stableTimer = setTimeout(() => { session.reconnectAttempts = 0; session.restartAttempts = 0; }, 10000);
+  session.stableTimer = setTimeout(() => { session.reconnectAttempts = 0; session.restartAttempts = 0; }, 30000);
   flushRelayBuffer(session);
 }
 
-function restartRelay(session) {
+function restartRelay(session, videoBitrate) {
   return new Promise(resolve => {
     if (!session || session.closed || session.restarting || session.restartAttempts >= MAX_RECONNECT_ATTEMPTS) return resolve(false);
     session.restarting = true;
@@ -187,7 +185,10 @@ function restartRelay(session) {
     session.reconnecting = true;
     session.failed = false;
     session.lastError = null;
+    session.lastWarning = null;
     session.generation += 1;
+    session.lastSeq = -1;
+    if (videoBitrate) session.videoKbps = clampKbps(videoBitrate);
     session.pendingChunks = [];
     session.pendingBytes = 0;
     const previous = session.process;
@@ -237,47 +238,10 @@ function writeRelayChunk(session, chunk) {
 
 
 function routeApi(req, res, url) {
-  if (req.method === 'GET' && url.pathname === '/api/auth/status') {
-    return sendJson(res, 200, { ok: true, setupRequired: !passwordRecord, authenticated: Boolean(currentAuthSession(req)) });
-  }
-  if (req.method === 'POST' && url.pathname === '/api/auth/setup') {
-    return readJson(req).then(body => {
-      if (passwordRecord) return sendJson(res, 409, { ok: false, error: 'ตั้งรหัสผ่านแล้ว กรุณาเข้าสู่ระบบ' });
-      if (!validPassword(body.password)) return sendJson(res, 400, { ok: false, error: `รหัสผ่านต้องมี ${PASSWORD_MIN_LENGTH}-${128} ตัวอักษร` });
-      passwordRecord = createPasswordRecord(body.password); savePasswordRecord(); issueAuthSession(res); auditRequest(req, 'auth_setup_completed'); return sendJson(res, 200, { ok: true, authenticated: true });
-    }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'setup_failed' }));
-  }
-  if (req.method === 'POST' && url.pathname === '/api/auth/login') {
-    return readJson(req).then(body => {
-      if (loginRateLimited(req)) { auditRequest(req, 'auth_login_rate_limited'); return sendJson(res, 429, { ok: false, error: 'ลองรหัสผ่านผิดหลายครั้ง กรุณารอ 15 นาที' }); }
-      if (!passwordRecord || !verifyPassword(body.password, passwordRecord)) { registerLoginFailure(req); auditRequest(req, 'auth_login_failed'); return sendJson(res, 401, { ok: false, error: 'รหัสผ่านไม่ถูกต้อง' }); }
-      clearLoginFailures(req); issueAuthSession(res); auditRequest(req, 'auth_login_succeeded'); return sendJson(res, 200, { ok: true, authenticated: true });
-    }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'login_failed' }));
-  }
-  if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
-    const token = currentAuthSession(req)?.token; if (token) authSessions.delete(token); clearAuthCookie(res); auditRequest(req, 'auth_logout'); return sendJson(res, 200, { ok: true });
-  }
-  if (req.method === 'POST' && url.pathname === '/api/auth/change-password') {
-    if (!currentAuthSession(req)) return sendJson(res, 401, { ok: false, error: 'ต้องเข้าสู่ระบบก่อน' });
-    return readJson(req).then(body => {
-      if (!verifyOwnerSecret(body.ownerSecret)) { auditRequest(req, 'auth_password_change_secret_failed'); return sendJson(res, 403, { ok: false, error: 'Secret Code ยืนยันความเป็นเจ้าของไม่ถูกต้อง' }); }
-      if (!validPassword(body.newPassword)) return sendJson(res, 400, { ok: false, error: `รหัสผ่านใหม่ต้องมี ${PASSWORD_MIN_LENGTH}-${128} ตัวอักษร` });
-      passwordRecord = createPasswordRecord(body.newPassword); savePasswordRecord(); authSessions.clear(); issueAuthSession(res); auditRequest(req, 'auth_password_changed'); return sendJson(res, 200, { ok: true, authenticated: true });
-    }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'change_password_failed' }));
-  }
-  if (req.method === 'POST' && url.pathname === '/api/auth/reset-password') {
-    return readJson(req).then(body => {
-      if (!verifyOwnerSecret(body.ownerSecret)) { auditRequest(req, 'auth_password_reset_secret_failed'); return sendJson(res, 403, { ok: false, error: 'Secret Code ผู้ดูแลระบบไม่ถูกต้อง' }); }
-      if (!validPassword(body.newPassword)) return sendJson(res, 400, { ok: false, error: `รหัสผ่านใหม่ต้องมี ${PASSWORD_MIN_LENGTH}-${128} ตัวอักษร` });
-      passwordRecord = createPasswordRecord(body.newPassword); savePasswordRecord(); authSessions.clear(); issueAuthSession(res); auditRequest(req, 'auth_password_reset'); return sendJson(res, 200, { ok: true, authenticated: true });
-    }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'reset_password_failed' }));
-  }
   if (req.method === 'GET' && url.pathname === '/api/health') {
     const ffmpeg = spawnSync(FFMPEG, ['-version'], { stdio: 'ignore' }).status === 0;
     return sendJson(res, ffmpeg ? 200 : 503, { ok: ffmpeg, service: 'shuttlecast-relay', ffmpeg });
   }
-
-  if (url.pathname.startsWith('/api/stream/') && !currentAuthSession(req)) return sendJson(res, 401, { ok: false, error: 'ต้องเข้าสู่ระบบก่อนใช้งานสตรีม' });
 
   if (req.method === 'POST' && url.pathname === '/api/stream/start') {
     return readJson(req).then(body => {
@@ -285,7 +249,7 @@ function routeApi(req, res, url) {
       if (!targets.length) return sendJson(res, 400, { ok: false, error: 'ต้องมี RTMP URL อย่างน้อยหนึ่งปลายทาง' });
       if (targets.length > 2) return sendJson(res, 400, { ok: false, error: 'รองรับสูงสุดสองปลายทาง' });
       const id = crypto.randomUUID();
-      const session = { id, targetUrls: targets, targets: targets.length, closed: false, failed: false, restarting: false, reconnecting: false, reconnectAttempts: 0, restartAttempts: 0, generation: 0, pendingChunks: [], pendingBytes: 0, startedAt: Date.now(), ipHash: requestFingerprint(req) };
+      const session = { id, targetUrls: targets, targets: targets.length, hasAudio: body.hasAudio !== false, videoKbps: clampKbps(body.videoBitrate), lastSeq: -1, bytesOut: 0, outTimeSec: 0, lastProgressAt: 0, closed: false, failed: false, restarting: false, reconnecting: false, reconnectAttempts: 0, restartAttempts: 0, generation: 0, pendingChunks: [], pendingBytes: 0, startedAt: Date.now(), ipHash: requestFingerprint(req) };
       launchRelay(session);
       sessions.set(id, session);
       auditRequest(req, 'stream_started', { sessionId: id, targets: targets.length });
@@ -297,14 +261,15 @@ function routeApi(req, res, url) {
   if (req.method === 'GET' && statusMatch) {
     const session = sessions.get(statusMatch[1]);
     if (!session) return sendJson(res, 404, { ok: false, error: 'session_not_found' });
-    return sendJson(res, 200, { ok: true, running: !session.closed && !session.failed && !session.reconnecting, reconnecting: session.reconnecting, failed: session.failed, reconnectAttempts: session.reconnectAttempts, bufferedBytes: session.pendingBytes, bufferDrops: session.bufferDrops || 0, targets: session.targets, lastError: session.failed ? session.lastError || null : null });
+    const now = Date.now();
+    return sendJson(res, 200, { ok: true, running: !session.closed && !session.failed && !session.reconnecting, sending: Boolean(session.lastProgressAt) && now - session.lastProgressAt < 5000, bytesOut: session.bytesOut || 0, outTimeSec: Math.round(session.outTimeSec || 0), relayAgeSec: Math.round((now - (session.relayStartedAt || now)) / 1000), reconnecting: session.reconnecting, failed: session.failed, reconnectAttempts: session.restartAttempts, bufferedBytes: session.pendingBytes, bufferDrops: session.bufferDrops || 0, targets: session.targets, hasAudio: session.hasAudio, videoKbps: session.videoKbps, lastError: session.failed ? session.lastError || null : null, lastWarning: session.lastWarning || null });
   }
 
   const restartMatch = url.pathname.match(/^\/api\/stream\/([^/]+)\/restart$/);
   if (req.method === 'POST' && restartMatch) {
     const session = sessions.get(restartMatch[1]);
     if (!session || session.closed) return sendJson(res, 404, { ok: false, error: 'session_not_found' });
-    return restartRelay(session).then(ok => sendJson(res, ok ? 200 : 409, { ok, generation: session.generation, error: ok ? undefined : 'relay_restart_limit' }));
+    return readJson(req).catch(() => ({})).then(body => restartRelay(session, body.videoBitrate)).then(ok => sendJson(res, ok ? 200 : 409, { ok, generation: session.generation, error: ok ? undefined : 'relay_restart_limit' }));
   }
 
   const chunkMatch = url.pathname.match(/^\/api\/stream\/([^/]+)\/chunk$/);
@@ -318,9 +283,27 @@ function routeApi(req, res, url) {
       req.on('end', () => sendJson(res, 409, { ok: false, error: 'stale_stream_chunk' }));
       return;
     }
-    req.on('data', chunk => { if (!session.closed) writeRelayChunk(session, chunk); });
-    req.on('end', () => sendJson(res, 200, { ok: true }));
-    req.on('error', () => { stopSession(session); });
+    const seq = Number(req.headers['x-chunk-seq']);
+    const parts = [];
+    let size = 0;
+    let tooLarge = false;
+    req.on('data', chunk => { size += chunk.length; if (size > MAX_CHUNK_BYTES) { tooLarge = true; return; } parts.push(chunk); });
+    req.on('error', () => {});
+    req.on('end', () => {
+      if (tooLarge) return sendJson(res, 413, { ok: false, error: 'chunk_too_large' });
+      if (session.closed) return sendJson(res, 404, { ok: false, error: 'session_not_found' });
+      if (generation !== session.generation) return sendJson(res, 409, { ok: false, error: 'stale_stream_chunk' });
+      // Retried uploads reuse the same sequence number; never write the same bytes twice into the WebM stream.
+      if (Number.isInteger(seq) && seq <= session.lastSeq) return sendJson(res, 200, { ok: true, duplicate: true });
+      if (Number.isInteger(seq)) session.lastSeq = seq;
+      const flushed = writeRelayChunk(session, Buffer.concat(parts));
+      const stdin = session.process?.stdin;
+      if (flushed !== false || !stdin) return sendJson(res, 200, { ok: true });
+      let replied = false;
+      const reply = () => { if (replied) return; replied = true; sendJson(res, 200, { ok: true, backpressure: true }); };
+      stdin.once('drain', reply);
+      setTimeout(reply, 3000);
+    });
     return;
   }
 

@@ -9,38 +9,7 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <section class="auth-gate" id="authGate" aria-labelledby="authTitle">
-    <div class="auth-card">
-      <div class="brand-mark auth-mark" aria-hidden="true"><span>S</span><i></i></div>
-      <p class="eyebrow">SHUTTLECAST ACCESS</p>
-      <h2 id="authTitle">เข้าสู่ ShuttleCast</h2>
-      <p class="auth-copy" id="authCopy">ใส่รหัสผ่านเพื่อเข้าใช้งานห้องควบคุมไลฟ์</p>
-      <form id="authForm">
-        <label class="field-label" for="authPassword">รหัสผ่าน</label>
-        <input class="text-input" id="authPassword" type="password" minlength="8" maxlength="128" autocomplete="current-password" required>
-        <label class="field-label auth-confirm-label" for="authPasswordConfirm" hidden>ยืนยันรหัสผ่าน</label>
-        <input class="text-input auth-confirm-input" id="authPasswordConfirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" hidden>
-        <button class="primary-button full" id="authSubmit" type="submit">เข้าสู่ระบบ</button>
-      </form>
-      <p class="auth-error" id="authError" role="alert"></p>
-      <button class="auth-reset-trigger" id="adminResetButton" type="button"><span class="reset-key-icon" aria-hidden="true">↻</span><span>รีเซ็ตรหัสผ่านผู้ดูแลระบบ</span></button>
-      <div class="auth-reset-panel" id="adminResetPanel" hidden>
-        <div class="auth-reset-heading"><span class="section-label">ADMIN RECOVERY</span><strong>รีเซ็ตรหัสผ่าน</strong></div>
-        <p class="auth-reset-copy">ใช้ Secret Code ของผู้ดูแลระบบเพื่อกำหนดรหัสผ่านใหม่ ระบบจะออกจากระบบให้ผู้ใช้งานทุกคน</p>
-        <form id="adminResetForm">
-          <label class="field-label" for="adminResetSecret">Secret Code ผู้ดูแลระบบ</label>
-          <input class="text-input" id="adminResetSecret" type="password" autocomplete="off" required>
-          <label class="field-label" for="adminResetPassword">รหัสผ่านใหม่</label>
-          <input class="text-input" id="adminResetPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
-          <label class="field-label" for="adminResetConfirm">ยืนยันรหัสผ่านใหม่</label>
-          <input class="text-input" id="adminResetConfirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
-          <p class="auth-error" id="adminResetError" role="alert"></p>
-          <div class="auth-reset-actions"><button class="secondary-button" id="cancelAdminReset" type="button">ยกเลิก</button><button class="primary-button" type="submit">รีเซ็ตและเข้าสู่ระบบ</button></div>
-        </form>
-      </div>
-    </div>
-  </section>
-  <div class="app-shell" id="appShell" hidden>
+  <div class="app-shell" id="appShell">
     <header class="topbar">
       <div class="brand-lockup">
         <div class="brand-mark" aria-hidden="true"><span>S</span><i></i></div>
@@ -52,7 +21,6 @@
       <div class="topbar-actions">
         <span class="connection-dot" id="connectionDot"></span>
         <span class="connection-label" id="connectionLabel">พร้อมตั้งค่า</span>
-        <button class="icon-button security-button" id="securityButton" aria-label="ตั้งค่าความปลอดภัย" title="เปลี่ยนรหัสผ่านและออกจากระบบ">ความปลอดภัย</button>
         <button class="icon-button" id="helpButton" aria-label="เปิดคำแนะนำ">?</button>
       </div>
     </header>
@@ -134,6 +102,7 @@
             <div class="stage" id="stage">
               <video id="cameraVideo" autoplay playsinline muted></video>
               <canvas id="broadcastCanvas" aria-hidden="true"></canvas>
+              <div class="rotate-hint" role="status">หมุนมือถือเป็นแนวนอนเพื่อให้เห็นสนามเต็มภาพ</div>
               <div class="camera-placeholder" id="cameraPlaceholder">
                 <div class="camera-icon">◉</div>
                 <h3>ยังไม่ได้เปิดกล้อง</h3>
@@ -144,6 +113,8 @@
             <div class="stage-toolbar">
               <button class="secondary-button compact" id="cameraToggle">เปิดกล้อง</button>
               <button class="secondary-button compact" id="micToggle">ไมค์: เปิด</button>
+              <button class="secondary-button compact" id="switchCameraButton">สลับเลนส์</button>
+              <button class="secondary-button compact" id="fullscreenButton">เต็มจอแนวนอน</button>
               <span class="toolbar-hint">ภาพ scoreboard จะถูกวาดลงในวิดีโอ</span>
             </div>
           </section>
@@ -186,20 +157,6 @@
       </section>
     </div>
 
-    <div class="modal-backdrop" id="securityModal" hidden>
-      <section class="modal panel" role="dialog" aria-modal="true" aria-labelledby="securityTitle">
-        <div class="modal-heading"><div><p class="section-label">SECURITY</p><h3 id="securityTitle">ตั้งค่าความปลอดภัย</h3></div><button class="close-button" id="closeSecurity" type="button">×</button></div>
-        <p class="modal-intro">ผู้ดูแลระบบสามารถรีเซ็ตรหัสผ่านด้วย Secret Code ได้ การเปลี่ยนรหัสจะทำให้ Session อื่นออกจากระบบทั้งหมด</p>
-        <form id="changePasswordForm">
-          <label class="field-label" for="ownerSecret">Secret Code ผู้ดูแลระบบ</label><input class="text-input" id="ownerSecret" type="password" autocomplete="off" placeholder="กรอก Secret Code ของผู้ดูแลระบบ" required>
-          <label class="field-label" for="newPassword">รหัสผ่านใหม่</label><input class="text-input" id="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
-          <label class="field-label" for="confirmPassword">ยืนยันรหัสผ่านใหม่</label><input class="text-input" id="confirmPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
-          <p class="auth-error" id="changePasswordError" role="alert"></p>
-          <div class="modal-actions"><button class="secondary-button" id="logoutButton" type="button">ออกจากระบบ</button><button class="primary-button" type="submit">บันทึกรหัสผ่านใหม่</button></div>
-        </form>
-      </section>
-    </div>
-
     <div class="modal-backdrop" id="helpModal" hidden>
       <section class="modal panel help-modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
         <div class="modal-heading"><div><p class="section-label">QUICK GUIDE / SHUTTLECAST</p><h3 id="helpTitle">คู่มือการใช้งาน</h3></div><button class="close-button" id="closeHelp" type="button" aria-label="ปิดคู่มือ">×</button></div>
@@ -218,6 +175,8 @@
         <div class="guide-section"><div class="guide-section-heading"><span class="guide-number">04</span><div><strong>ส่งไปสองช่องทางพร้อมกัน</strong><span>Facebook + YouTube</span></div></div><ol class="guide-list"><li>ตั้งค่า Stream Key ของทั้งสองแพลตฟอร์มในหน้าต่างเดียวกัน และเปิดสวิตช์ทั้งคู่</li><li>กดบันทึก แล้วเริ่มถ่ายทอดสดเพียงครั้งเดียว ShuttleCast จะส่งภาพไปทั้ง Facebook และ YouTube</li><li>หากต้องการส่งเพียงช่องทางเดียว ให้ปิดสวิตช์ของอีกช่องทางแล้วบันทึกใหม่</li><li>หากแพลตฟอร์มใดหลุด ระบบจะแจ้งสถานะและพยายามเชื่อมต่อ relay ใหม่อัตโนมัติ อีกช่องทางอาจยังถ่ายทอดต่อได้</li></ol></div>
 
         <div class="guide-section"><div class="guide-section-heading"><span class="guide-number">05</span><div><strong>จบการถ่ายทอด</strong><span>หลังจบการแข่งขัน</span></div></div><ol class="guide-list"><li>กด <strong>หยุดถ่ายทอดสด</strong> ใน ShuttleCast ก่อนปิดกล้องหรือปิดเบราว์เซอร์</li><li>ตรวจสอบว่า Facebook และ YouTube หยุด Live แล้วตามสถานะของแต่ละแพลตฟอร์ม</li><li>Stream Key จะถูกจำไว้ในอุปกรณ์นี้เพื่อใช้ครั้งถัดไป ไม่ควรแชร์ Key หรือเปิดหน้าจอตั้งค่าให้ผู้อื่นเห็น</li></ol></div>
+
+        <div class="guide-section"><div class="guide-section-heading"><span class="guide-number">06</span><div><strong>ไลฟ์ด้วยมือถือ Android (เช่น OPPO Reno 14 5G)</strong><span>ตั้งค่าก่อนแข่งเพื่อให้ไลฟ์ไม่หลุด</span></div></div><ol class="guide-list"><li>เปิดลิงก์ใน <strong>Google Chrome</strong> โดยตรง ไม่ใช้เบราว์เซอร์ในแอป Facebook/LINE หรือเบราว์เซอร์ HeyTap</li><li>ColorOS: <strong>ตั้งค่า → แบตเตอรี่ → Chrome</strong> เลือก <strong>อนุญาตให้ทำงานเบื้องหลัง</strong> และปิดโหมดประหยัดพลังงาน</li><li>กด <strong>เต็มจอแนวนอน</strong> แล้ววางมือถือบนขาตั้งแนวนอน ภาพสนามจะเต็มเฟรม 16:9</li><li>ใช้ <strong>สลับเลนส์</strong> หากภาพกว้าง/แคบเกินไป (กล้องหลักหรือกล้องมุมกว้าง)</li><li>ห้ามสลับแอป ล็อกจอ หรือรับสายระหว่างไลฟ์ ระบบจะกันจอดับอัตโนมัติ และเสียบสายชาร์จตลอดการแข่ง</li><li>มือถือจะเริ่มที่ 720p เพื่อลดความร้อน หากใช้ 5G ให้ตรวจว่าสัญญาณเต็ม หรือใช้ Wi‑Fi ของสนามที่เสถียร</li></ol></div>
 
         <div class="guide-troubleshooting"><strong>Troubleshooting: กด Live แล้วไม่ติด</strong><ul><li><strong>เช็กตามลำดับ:</strong> ต้องเข้าสู่ระบบแล้ว → เปิดกล้องสำเร็จ → ตั้งค่า Stream Key อย่างน้อยหนึ่งช่องทาง → กดบันทึกปลายทาง → จึงกด <strong>เริ่มถ่ายทอดสด</strong></li><li><strong>ปุ่มเริ่มถ่ายทอดสดแจ้งให้ตั้งค่า:</strong> เปิดหน้าต่าง <strong>ตั้งค่า Stream Key</strong> เปิดสวิตช์ Facebook หรือ YouTube และตรวจว่าได้วาง Key จริง ไม่มีช่องว่างด้านหน้า/ท้าย</li><li><strong>เปิดกล้องไม่ได้:</strong> ตรวจสิทธิ์กล้อง/ไมค์ เปิดลิงก์โดยตรงใน Chrome หรือ Safari และปิดแอปอื่นที่กำลังใช้กล้อง</li><li><strong>Facebook ยังไม่ขึ้น Live:</strong> ใน Facebook Live Producer ต้องเลือก <strong>Streaming software</strong> ใช้ Stream Key ของ Live ที่กำลังสร้าง และกด <strong>Go Live / ถ่ายทอดสด</strong> หลัง ShuttleCast ส่งสัญญาณเข้า Preview แล้ว</li><li><strong>YouTube ยังไม่ขึ้น Live:</strong> ใน YouTube Studio ต้องเลือก Stream ที่ถูกต้อง ตรวจ Stream key และกด <strong>Go live</strong> หลังภาพ Preview เข้ามาแล้ว หากตั้งเป็น Scheduled ให้เปิด Event นั้นก่อน</li><li><strong>Live ไม่ติดทั้งสองช่องทาง:</strong> ปิดสวิตช์ให้เหลือเพียง Facebook หรือ YouTube หนึ่งช่อง ทดสอบทีละช่องทาง แล้วค่อยเปิดทั้งสองช่องพร้อมกันเมื่อแต่ละช่องทำงาน</li><li><strong>Relay หยุดหรือขึ้นข้อความเชื่อมต่อใหม่:</strong> อย่าเปิด Live ซ้ำหลายแท็บ รอระบบ reconnect สักครู่ หากยังไม่กลับมาให้กดหยุดถ่ายทอดสด ตรวจ Key แล้วเริ่มใหม่</li><li><strong>ภาพดำหรือภาพค้าง:</strong> ตรวจว่ากล้องยังทำงานและหน้าจอไม่ถูกล็อก ปิดโหมดประหยัดพลังงานชั่วคราว และเปิดกล้องใหม่ก่อนเริ่ม Live</li><li><strong>ภาพสะดุดหรือหลุด:</strong> รอระบบปรับคุณภาพอัตโนมัติ หยุดการดาวน์โหลดอื่น ย้ายไปจุดที่สัญญาณดีขึ้น หรือสลับ Wi‑Fi/เครือข่ายมือถือ</li><li><strong>ต้องเปลี่ยน Stream Key:</strong> เปิดตั้งค่า Stream Key วางค่าใหม่ทับค่าเดิม แล้วกด <strong>บันทึกปลายทาง</strong> ก่อนเริ่ม Live ครั้งถัดไป</li></ul></div>
       </section>
