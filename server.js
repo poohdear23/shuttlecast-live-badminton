@@ -5,7 +5,17 @@ const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
 
 const PORT = Number(process.env.PORT || 3000);
-const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
+const FFMPEG = resolveFfmpeg();
+
+function resolveFfmpeg() {
+  if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
+  if (spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0) return 'ffmpeg';
+  try {
+    const bundled = require('ffmpeg-static');
+    if (bundled && fs.existsSync(bundled)) return bundled;
+  } catch {}
+  return 'ffmpeg';
+}
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const sessions = new Map();
 const AUDIT_LOG_FILE = process.env.SHUTTLECAST_AUDIT_FILE || path.join(__dirname, '.shuttlecast-audit.jsonl');
