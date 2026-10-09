@@ -141,24 +141,11 @@ function flushRelayBuffer(session) {
 }
 
 function scheduleRelayReconnect(session, reason) {
-  if (session.closed || session.reconnectTimer || session.failed) return;
-  if (session.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    session.failed = true;
-    session.reconnecting = false;
-    session.lastError = 'FFmpeg relay reconnect attempts exhausted';
-    auditSession(session, 'stream_reconnect_exhausted', { sessionId: session.id, attempts: session.reconnectAttempts });
-    return;
-  }
-  const attempt = session.reconnectAttempts + 1;
-  const delay = Math.min(30000, RECONNECT_BASE_DELAY_MS * (2 ** (attempt - 1)));
-  session.reconnectAttempts = attempt;
-  session.reconnecting = true;
+  if (session.closed || session.restarting || session.failed) return;
+  session.failed = true;
+  session.reconnecting = false;
   session.lastError = reason;
-  auditSession(session, 'stream_reconnect_scheduled', { sessionId: session.id, attempt, delayMs: delay, reason });
-  session.reconnectTimer = setTimeout(() => {
-    session.reconnectTimer = null;
-    if (!session.closed) launchRelay(session, true);
-  }, delay);
+  auditSession(session, 'stream_relay_failed', { sessionId: session.id, reason });
 }
 
 function launchRelay(session, isReconnect = false) {
@@ -170,7 +157,7 @@ function launchRelay(session, isReconnect = false) {
   session.failed = false;
   let handledExit = false;
   const handleRelayFailure = (reason) => {
-    if (handledExit || session.closed) return;
+    if (handledExit || session.closed || session.restarting) return;
     handledExit = true;
     session.lastError = reason;
     scheduleRelayReconnect(session, reason);
@@ -188,8 +175,37 @@ function launchRelay(session, isReconnect = false) {
   });
   if (isReconnect) auditSession(session, 'stream_reconnect_started', { sessionId: session.id, attempt: session.reconnectAttempts });
   clearTimeout(session.stableTimer);
-  session.stableTimer = setTimeout(() => { session.reconnectAttempts = 0; }, 10000);
+  session.stableTimer = setTimeout(() => { session.reconnectAttempts = 0; session.restartAttempts = 0; }, 10000);
   flushRelayBuffer(session);
+}
+
+function restartRelay(session) {
+  return new Promise(resolve => {
+    if (!session || session.closed || session.restarting || session.restartAttempts >= MAX_RECONNECT_ATTEMPTS) return resolve(false);
+    session.restarting = true;
+    session.restartAttempts += 1;
+    session.reconnecting = true;
+    session.failed = false;
+    session.lastError = null;
+    session.generation += 1;
+    session.pendingChunks = [];
+    session.pendingBytes = 0;
+    const previous = session.process;
+    let started = false;
+    const start = () => {
+      if (started || session.closed) return;
+      started = true;
+      session.restarting = false;
+      session.reconnecting = false;
+      launchRelay(session, true);
+      resolve(true);
+    };
+    if (!previous || previous.exitCode !== null) return start();
+    previous.once('close', start);
+    try { previous.stdin.destroy(); } catch {}
+    try { previous.kill('SIGTERM'); } catch {}
+    setTimeout(start, 700);
+  });
 }
 
 function stopSession(session) {
@@ -269,7 +285,7 @@ function routeApi(req, res, url) {
       if (!targets.length) return sendJson(res, 400, { ok: false, error: 'ต้องมี RTMP URL อย่างน้อยหนึ่งปลายทาง' });
       if (targets.length > 2) return sendJson(res, 400, { ok: false, error: 'รองรับสูงสุดสองปลายทาง' });
       const id = crypto.randomUUID();
-      const session = { id, targetUrls: targets, targets: targets.length, closed: false, failed: false, reconnecting: false, reconnectAttempts: 0, pendingChunks: [], pendingBytes: 0, startedAt: Date.now(), ipHash: requestFingerprint(req) };
+      const session = { id, targetUrls: targets, targets: targets.length, closed: false, failed: false, restarting: false, reconnecting: false, reconnectAttempts: 0, restartAttempts: 0, generation: 0, pendingChunks: [], pendingBytes: 0, startedAt: Date.now(), ipHash: requestFingerprint(req) };
       launchRelay(session);
       sessions.set(id, session);
       auditRequest(req, 'stream_started', { sessionId: id, targets: targets.length });
@@ -284,11 +300,24 @@ function routeApi(req, res, url) {
     return sendJson(res, 200, { ok: true, running: !session.closed && !session.failed && !session.reconnecting, reconnecting: session.reconnecting, failed: session.failed, reconnectAttempts: session.reconnectAttempts, bufferedBytes: session.pendingBytes, bufferDrops: session.bufferDrops || 0, targets: session.targets, lastError: session.failed ? session.lastError || null : null });
   }
 
+  const restartMatch = url.pathname.match(/^\/api\/stream\/([^/]+)\/restart$/);
+  if (req.method === 'POST' && restartMatch) {
+    const session = sessions.get(restartMatch[1]);
+    if (!session || session.closed) return sendJson(res, 404, { ok: false, error: 'session_not_found' });
+    return restartRelay(session).then(ok => sendJson(res, ok ? 200 : 409, { ok, generation: session.generation, error: ok ? undefined : 'relay_restart_limit' }));
+  }
+
   const chunkMatch = url.pathname.match(/^\/api\/stream\/([^/]+)\/chunk$/);
   if (req.method === 'POST' && chunkMatch) {
     const session = sessions.get(chunkMatch[1]);
     if (!session || session.closed) return sendJson(res, 404, { ok: false, error: 'session_not_found' });
     if (session.failed) return sendJson(res, 503, { ok: false, error: 'relay_reconnect_failed' });
+    const generation = Number(req.headers['x-stream-generation'] ?? 0);
+    if (!Number.isInteger(generation) || generation !== session.generation) {
+      req.on('data', () => {});
+      req.on('end', () => sendJson(res, 409, { ok: false, error: 'stale_stream_chunk' }));
+      return;
+    }
     req.on('data', chunk => { if (!session.closed) writeRelayChunk(session, chunk); });
     req.on('end', () => sendJson(res, 200, { ok: true }));
     req.on('error', () => { stopSession(session); });
