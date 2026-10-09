@@ -3,7 +3,7 @@
   const state = {
     view: 'setup', matchTitle: 'Rally Night • Court 1', sideA: 'ทีมฟ้า', sideB: 'ทีมแดง', teamColorA: '#d3a94f', teamColorB: '#ead7aa', matchGames: 3, targetPoints: 21, capPoints: 30, winByTwo: true,
     scoreA: 0, scoreB: 0, winsA: 0, winsB: 0, game: 1, gameResults: [], history: [],
-    stream: { camera: null, canvas: null, recorder: null, sessionId: null, generation: 0, running: false, stopping: false, uploadQueue: Promise.resolve(), micEnabled: true, quality: 'high', switching: false, consecutiveFailures: 0, successfulUploads: 0 },
+    stream: { camera: null, canvas: null, recorder: null, sessionId: null, generation: 0, running: false, stopping: false, uploadQueue: Promise.resolve(), micEnabled: true, quality: 'high', switching: false, consecutiveFailures: 0, pendingUploads: 0 },
     destinations: { facebook: null, youtube: null }
   };
   const QUALITY_PROFILES = { high: { label: '1080p • 6 Mbps', width: 1920, height: 1080, bitrate: 6000000 }, medium: { label: '720p • 4.5 Mbps', width: 1280, height: 720, bitrate: 4500000 }, low: { label: '720p • 2.5 Mbps', width: 1280, height: 720, bitrate: 2500000 } };
@@ -131,10 +131,32 @@
     state.destinations = payload; persistDestinations(); refreshDestinationUI(); closeDestinations(); toast('บันทึกปลายทางไว้ในอุปกรณ์นี้แล้ว');
   }
 
-  async function uploadChunk(sessionId, blob, generation) { const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 5000); try { const response = await fetch(`/api/stream/${sessionId}/chunk`, { method: 'POST', body: blob, headers: { 'Content-Type': 'video/webm', 'X-Stream-Generation': String(generation) }, signal: controller.signal }); if (!response.ok) throw new Error('chunk_upload_failed'); } finally { window.clearTimeout(timeout); } }
-  function chooseInitialQuality() { const downlink = Number(navigator.connection?.downlink); return downlink && downlink < 2.5 ? 'low' : downlink && downlink < 5 ? 'medium' : 'high'; }
+  const MAX_CHUNK_ATTEMPTS = 4;
+  const MAX_PENDING_UPLOADS = 8;
+  const wait = ms => new Promise(resolve => window.setTimeout(resolve, ms));
+  function streamError(code) { const error = new Error(code); error.code = code; return error; }
+  async function uploadChunk(sessionId, blob, generation, seq) {
+    let lastError = streamError('chunk_upload_failed');
+    for (let attempt = 0; attempt < MAX_CHUNK_ATTEMPTS; attempt += 1) {
+      if (generation !== state.stream.generation || !state.stream.running) return;
+      const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 10000);
+      try {
+        const response = await fetch(`/api/stream/${sessionId}/chunk`, { method: 'POST', body: blob, cache: 'no-store', headers: { 'Content-Type': 'video/webm', 'X-Stream-Generation': String(generation), 'X-Chunk-Seq': String(seq) }, signal: controller.signal });
+        if (response.ok) return;
+        if (response.status === 409) throw streamError('stale');
+        if (response.status === 404) throw streamError('session_not_found');
+        if (response.status === 503) throw streamError('relay_failed');
+        lastError = streamError(`chunk_http_${response.status}`);
+      } catch (error) {
+        if (['stale', 'session_not_found', 'relay_failed'].includes(error.code)) throw error;
+        lastError = error;
+      } finally { window.clearTimeout(timeout); }
+      await wait(500 * (attempt + 1));
+    }
+    throw lastError;
+  }
+  function chooseInitialQuality() { const downlink = Number(navigator.connection?.downlink); return downlink && downlink < 4 ? 'low' : downlink && downlink < 8 ? 'medium' : 'high'; }
   function nextLowerQuality() { const index = qualityOrder.indexOf(state.stream.quality); return qualityOrder[Math.min(qualityOrder.length - 1, index + 1)]; }
-  function nextHigherQuality() { const index = qualityOrder.indexOf(state.stream.quality); return qualityOrder[Math.max(0, index - 1)]; }
   async function restartCapture(nextQuality, message) {
     if (!state.stream.running || state.stream.switching) return false;
     const sessionId = state.stream.sessionId; state.stream.switching = true; state.stream.generation += 1;
@@ -142,40 +164,85 @@
     if (oldRecorder && oldRecorder.state !== 'inactive') await new Promise(resolve => { oldRecorder.addEventListener('stop', resolve, { once: true }); oldRecorder.stop(); });
     await state.stream.uploadQueue.catch(() => {});
     try {
-      const response = await fetch(`/api/stream/${sessionId}/restart`, { method: 'POST' }); const result = await response.json().catch(() => ({}));
+      const quality = nextQuality || state.stream.quality;
+      const response = await fetch(`/api/stream/${sessionId}/restart`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoBitrate: QUALITY_PROFILES[quality].bitrate }) });
+      const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.ok) throw new Error(result.error || 'relay_restart_failed');
-      state.stream.quality = nextQuality || state.stream.quality; state.stream.consecutiveFailures = 0; state.stream.successfulUploads = 0; startRecorder(sessionId, state.stream.canvas); toast(`${message} ใช้ ${QUALITY_PROFILES[state.stream.quality].label}`); return true;
-    } catch { state.stream.running = false; await fetch(`/api/stream/${sessionId}/stop`, { method: 'POST' }).catch(() => {}); state.stream.sessionId = null; setLiveUi(false); toast('เชื่อมต่อ relay ใหม่ไม่สำเร็จ — กรุณาเริ่มถ่ายทอดสดใหม่'); return false;
+      state.stream.quality = quality; state.stream.consecutiveFailures = 0; state.stream.pendingUploads = 0; state.stream.uploadQueue = Promise.resolve();
+      startRecorder(sessionId, state.stream.canvas); toast(`${message} ใช้ ${QUALITY_PROFILES[state.stream.quality].label}`); return true;
+    } catch {
+      state.stream.running = false; await fetch(`/api/stream/${sessionId}/stop`, { method: 'POST' }).catch(() => {}); state.stream.sessionId = null; setLiveUi(false); toast('เชื่อมต่อ relay ใหม่ไม่สำเร็จ — กรุณาเริ่มถ่ายทอดสดใหม่'); return false;
     } finally { state.stream.switching = false; }
   }
-  async function switchQuality(next, message) { if (!next || state.stream.switching || !state.stream.running || next === state.stream.quality) return; await restartCapture(next, message); }
-  function startRecorder(sessionId, composed) { const generation = state.stream.generation; const profile = QUALITY_PROFILES[state.stream.quality] || QUALITY_PROFILES.high; const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' : 'video/webm'; const recorder = new MediaRecorder(composed, { mimeType, videoBitsPerSecond: profile.bitrate, audioBitsPerSecond: 160000 }); state.stream.recorder = recorder; recorder.ondataavailable = event => { if (!event.data.size || generation !== state.stream.generation || !state.stream.running) return; state.stream.uploadQueue = state.stream.uploadQueue.then(async () => { if (generation !== state.stream.generation || !state.stream.running) return; await uploadChunk(sessionId, event.data, generation); state.stream.consecutiveFailures = 0; state.stream.successfulUploads += 1; if (state.stream.successfulUploads >= 15) { state.stream.successfulUploads = 0; await switchQuality(nextHigherQuality(), 'สัญญาณกลับมาปกติ'); } }).catch(async () => { if (generation !== state.stream.generation || !state.stream.running) return; state.stream.successfulUploads = 0; state.stream.consecutiveFailures += 1; if (state.stream.consecutiveFailures === 1) toast('เน็ตเริ่มช้าลง — กำลังตรวจและปรับคุณภาพ'); if (state.stream.consecutiveFailures >= 2) await restartCapture(nextLowerQuality(), 'สัญญาณไม่เสถียร — กำลังเชื่อมต่อ relay ใหม่'); }); }; recorder.onerror = () => toast('ตัวบันทึกวิดีโอขัดข้อง — กำลังพยายามส่งต่อ'); recorder.start(1000); }
+  function pickRecorderMime() { return ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp8', 'video/webm'].find(type => MediaRecorder.isTypeSupported(type)) || ''; }
+  function startRecorder(sessionId, composed) {
+    const generation = state.stream.generation; const profile = QUALITY_PROFILES[state.stream.quality] || QUALITY_PROFILES.high; const mimeType = pickRecorderMime();
+    const options = { videoBitsPerSecond: profile.bitrate, audioBitsPerSecond: 128000 }; if (mimeType) options.mimeType = mimeType;
+    const recorder = new MediaRecorder(composed, options); state.stream.recorder = recorder; let seq = 0;
+    recorder.ondataavailable = event => {
+      if (!event.data.size || generation !== state.stream.generation || !state.stream.running) return;
+      const chunk = event.data; const chunkSeq = seq; seq += 1; state.stream.pendingUploads += 1;
+      if (state.stream.pendingUploads > MAX_PENDING_UPLOADS && !state.stream.switching) { restartCapture(nextLowerQuality(), 'อัปโหลดไม่ทันสัญญาณ — ลดคุณภาพ'); return; }
+      state.stream.uploadQueue = state.stream.uploadQueue.then(async () => {
+        if (generation !== state.stream.generation || !state.stream.running) return;
+        await uploadChunk(sessionId, chunk, generation, chunkSeq); state.stream.consecutiveFailures = 0;
+      }).catch(async error => {
+        if (generation !== state.stream.generation || !state.stream.running) return;
+        if (error?.code === 'stale' || error?.code === 'relay_failed') return;
+        state.stream.consecutiveFailures += 1;
+        // A dropped chunk corrupts the WebM stream FFmpeg is reading, so a clean restart is required.
+        await restartCapture(nextLowerQuality(), 'เน็ตไม่เสถียร — เชื่อมต่อใหม่และลดคุณภาพ');
+      }).finally(() => { if (generation === state.stream.generation) state.stream.pendingUploads = Math.max(0, state.stream.pendingUploads - 1); });
+    };
+    recorder.onerror = () => { if (generation === state.stream.generation) restartCapture(state.stream.quality, 'ตัวบันทึกวิดีโอขัดข้อง — เริ่มใหม่'); };
+    recorder.start(1000);
+  }
   async function startLive() {
     if (state.stream.running) return stopLive();
     if (!state.stream.camera) await openCamera(); if (!state.stream.camera) return;
     if (!state.destinations.facebook && !state.destinations.youtube) { openDestinations(); return toast('ตั้งค่า Stream Key ก่อนเริ่มถ่ายทอดสด'); }
+    const health = await fetch('/api/health', { cache: 'no-store' }).then(response => response.json()).catch(() => null);
+    if (!health?.ffmpeg) return toast('เซิร์ฟเวอร์ไม่มี FFmpeg — ต้องรันด้วย Docker/Node server ที่ติดตั้ง FFmpeg (Vercel serverless ส่ง RTMP ไม่ได้)');
     let sessionId;
     try {
-      const response = await fetch('/api/stream/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state.destinations) });
-      const result = await response.json(); if (!response.ok || !result.ok) return toast(result.error || 'เริ่ม relay ไม่สำเร็จ');
+      state.stream.quality = chooseInitialQuality(); state.stream.generation = 0;
+      const composed = $('#broadcastCanvas').captureStream(30);
+      state.stream.camera.getAudioTracks().forEach(track => { if (track.readyState === 'live') composed.addTrack(track); });
+      const hasAudio = composed.getAudioTracks().length > 0;
+      const response = await fetch('/api/stream/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...state.destinations, hasAudio, videoBitrate: QUALITY_PROFILES[state.stream.quality].bitrate }) });
+      const result = await response.json(); if (!response.ok || !result.ok) { composed.getVideoTracks().forEach(track => track.stop()); return toast(result.error || 'เริ่ม relay ไม่สำเร็จ'); }
       sessionId = result.sessionId;
-      state.stream.quality = chooseInitialQuality(); state.stream.generation = 0; const canvas = $('#broadcastCanvas'); const composed = canvas.captureStream(30); state.stream.camera.getAudioTracks().forEach(track => { if (state.stream.micEnabled && track.readyState === 'live') composed.addTrack(track); });
-      state.stream.canvas = composed; state.stream.sessionId = sessionId; state.stream.running = true; state.stream.stopping = false; state.stream.uploadQueue = Promise.resolve(); state.stream.consecutiveFailures = 0; state.stream.successfulUploads = 0; startRecorder(sessionId, composed); setLiveUi(true); toast(`กำลังเชื่อมต่อ ${result.targets} ปลายทาง — คุณภาพเริ่มต้น ${QUALITY_PROFILES[state.stream.quality].label}`); pollRelayStatus(sessionId);
+      state.stream.canvas = composed; state.stream.sessionId = sessionId; state.stream.running = true; state.stream.stopping = false; state.stream.uploadQueue = Promise.resolve(); state.stream.consecutiveFailures = 0; state.stream.pendingUploads = 0;
+      startRecorder(sessionId, composed); setLiveUi(true); setConnection('live', 'กำลังเชื่อมต่อปลายทาง…');
+      toast(`กำลังเชื่อมต่อ ${result.targets} ปลายทาง — ${QUALITY_PROFILES[state.stream.quality].label}${hasAudio ? '' : ' (ไม่มีไมค์ ส่งเสียงเงียบแทน)'}`); pollRelayStatus(sessionId);
     } catch (error) {
       if (sessionId) await fetch(`/api/stream/${sessionId}/stop`, { method: 'POST' }).catch(() => {});
       toast('เริ่มถ่ายทอดสดไม่ได้ — ตรวจ HTTPS, กล้อง และ Stream Key');
     }
   }
   async function pollRelayStatus(sessionId) {
-    let reconnectNoticeShown = false;
+    let wasSending = false; let stallWarned = false; let lastBytes = 0; let lastAt = Date.now();
     while (state.stream.sessionId === sessionId && state.stream.running) {
-      await new Promise(resolve => window.setTimeout(resolve, 1500));
+      await wait(2000);
       try {
-        const response = await fetch(`/api/stream/${sessionId}/status`); const status = await response.json();
-        if (status.reconnecting && !reconnectNoticeShown) { reconnectNoticeShown = true; toast(`สัญญาณขัดข้อง — กำลังเชื่อมต่อ relay ใหม่ (ครั้งที่ ${status.reconnectAttempts})`); }
-        if (!status.reconnecting) reconnectNoticeShown = false;
-        if (status.failed) { const recovered = await restartCapture(nextLowerQuality(), 'Relay ขัดข้อง — กำลังเชื่อมต่อใหม่'); if (!recovered) return; reconnectNoticeShown = false; continue; }
+        const response = await fetch(`/api/stream/${sessionId}/status`, { cache: 'no-store' });
         if (response.status === 404) { toast('Relay ไม่พบเซสชัน — กรุณาเริ่มถ่ายทอดสดใหม่'); return; }
+        const status = await response.json();
+        if (status.failed) {
+          wasSending = false; stallWarned = false;
+          const reason = String(status.lastError || '');
+          if (/ffmpeg_not_installed/.test(reason)) { toast('เซิร์ฟเวอร์ไม่มี FFmpeg — หยุดถ่ายทอดสด'); await stopLive(); return; }
+          if (/401|403|denied|unauthori|forbidden/i.test(reason)) toast('ปลายทางปฏิเสธ Stream Key — ตรวจคีย์ใน Facebook Live Producer');
+          const recovered = await restartCapture(state.stream.quality, 'การเชื่อมต่อปลายทางหลุด — กำลังเชื่อมต่อใหม่'); if (!recovered) return; continue;
+        }
+        const now = Date.now(); const kbps = Math.max(0, Math.round(((status.bytesOut - lastBytes) * 8) / Math.max(1, now - lastAt))); lastBytes = status.bytesOut; lastAt = now;
+        if (status.sending) {
+          if (!wasSending) toast('ส่งสัญญาณถึงปลายทางแล้ว — ตรวจภาพใน Facebook Live Producer');
+          wasSending = true; stallWarned = false; setConnection('live', `กำลังส่ง ${kbps} kbps`);
+        } else if (!stallWarned && status.relayAgeSec >= 12) {
+          stallWarned = true; wasSending = false; setConnection('live', 'ยังไม่มีข้อมูลออกจาก relay');
+          toast(status.lastWarning ? `Relay: ${status.lastWarning.slice(0, 140)}` : 'ยังไม่มีข้อมูลส่งออก — ตรวจเน็ตและ Stream Key');
+        }
       } catch {}
     }
   }
