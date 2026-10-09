@@ -277,8 +277,6 @@ function routeApi(req, res, url) {
     return sendJson(res, ffmpeg ? 200 : 503, { ok: ffmpeg, service: 'shuttlecast-relay', ffmpeg });
   }
 
-  if (url.pathname.startsWith('/api/stream/') && !currentAuthSession(req)) return sendJson(res, 401, { ok: false, error: 'ต้องเข้าสู่ระบบก่อนใช้งานสตรีม' });
-
   if (req.method === 'POST' && url.pathname === '/api/stream/start') {
     return readJson(req).then(body => {
       const targets = [body.facebook, body.youtube].map(safeRtmpUrl).filter(Boolean);
