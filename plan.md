@@ -32,9 +32,7 @@
 - `public/index.html`: โครงหน้าตั้งค่าและห้องควบคุม
 - `public/styles.css`: visual system, responsive layout และ motion
 - `public/app.js`: camera, canvas compositor, scoreboard state, chunk upload และ UI interactions
-- `public/manus-routes.json`: route manifest ของ WebDev
 - `Dockerfile`: production runtime พร้อม FFmpeg
-- `app.config.ts`: project logo metadata
 - `TODO.md`: acceptance-based deliverables
 
 ## Design direction
@@ -53,10 +51,3 @@
 
 ## ส่วนเชื่อมต่อกับบริการ
 ระบบจะรับ RTMP URL และ Stream Key จากผู้ใช้โดยตรงและส่งต่อจาก backend ไปยังปลายทางที่เลือก การยืนยันว่าแพลตฟอร์มขึ้น LIVE สำเร็จขึ้นกับการตอบรับของ Facebook/YouTube และควรตรวจซ้ำในแดชบอร์ดของแพลตฟอร์ม
-
-## ความปลอดภัยของแอป
-- Password Gate ฝั่ง Server สำหรับตั้งรหัสครั้งแรกและเข้าสู่ระบบ
-- Session Cookie แบบ HttpOnly, Secure, SameSite=None อายุ 8 ชั่วโมง
-- ป้องกัน Stream API ทุกเส้นทางด้วย Session และจำกัดการลองรหัสผิด
-- เปลี่ยนรหัสผ่านได้จาก Security panel และทำให้ Session อื่นหมดอายุ
-- เก็บเฉพาะ scrypt password hash ในไฟล์ runtime ที่ไม่อยู่ใน Git; Production หลาย instance ควรย้ายไป Secret/Database ที่ durable

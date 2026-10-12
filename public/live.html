@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ShuttleCast — OBS Viewer</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #050911; overflow: hidden; cursor: none; font-family: system-ui, sans-serif; }
+    #out { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: contain; background: #050911; }
+    #rx { position: fixed; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+    #hud { position: fixed; left: 16px; top: 14px; padding: 8px 14px; border-radius: 999px; background: rgba(5, 10, 17, .82); color: #f5f8ff; font-size: 14px; border: 1px solid rgba(211, 169, 79, .45); transition: opacity .4s; }
+    #hud.ok { border-color: rgba(120, 220, 140, .6); }
+    #hud.hide { opacity: 0; }
+    #audioBtn { position: fixed; left: 16px; bottom: 16px; padding: 10px 16px; border-radius: 999px; border: 1px solid #d3a94f; background: #121214; color: #ead7aa; font-size: 14px; cursor: pointer; display: none; }
+    body.clean #hud, body.clean #audioBtn { display: none !important; }
+  </style>
+</head>
+<body>
+  <canvas id="out" width="1280" height="720"></canvas>
+  <video id="rx" autoplay playsinline></video>
+  <div id="hud">กำลังเชื่อมต่อ…</div>
+  <button id="audioBtn" type="button">แตะเพื่อเปิดเสียง</button>
+  <script src="/overlay.js"></script>
+  <script src="/signal.js"></script>
+  <script src="/live.js"></script>
+</body>
+</html>

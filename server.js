@@ -1,25 +1,30 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
-const { spawn, spawnSync } = require('child_process');
 
 const PORT = Number(process.env.PORT || 3000);
-const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const sessions = new Map();
-const authSessions = new Map();
-const loginFailures = new Map();
-const AUTH_COOKIE = 'shuttlecast_session';
-const AUTH_TTL_MS = 8 * 60 * 60 * 1000;
-const PASSWORD_MIN_LENGTH = 8;
-const OWNER_SECRET_CODE = process.env.SHUTTLECAST_ADMIN_SECRET || '';
-const AUTH_STATE_FILE = process.env.SHUTTLECAST_AUTH_FILE || path.join(__dirname, '.shuttlecast-auth.json');
-const AUDIT_LOG_FILE = process.env.SHUTTLECAST_AUDIT_FILE || path.join(__dirname, '.shuttlecast-audit.jsonl');
-const MAX_RECONNECT_ATTEMPTS = 6;
-const RECONNECT_BASE_DELAY_MS = 1500;
-const MAX_RECONNECT_BUFFER_BYTES = 8 * 1024 * 1024;
-let passwordRecord = loadPasswordRecord();
+const POLL_HOLD_MS = 20000;
+const CLIENT_TIMEOUT_MS = 45000;
+const MAX_ROOMS = 20;
+const MAX_CLIENTS_PER_ROOM = 12;
+const rooms = new Map();
+
+// ---------- Monthly live-hours counter (estimate of TURN usage; counts every live phone, even on Wi-Fi) ----------
+const USAGE_FILE = process.env.USAGE_FILE || path.join(__dirname, 'usage.json');
+const USAGE_LIMIT_HOURS = Number(process.env.USAGE_LIMIT_HOURS || 650);
+const monthKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+let usage = { month: monthKey(), seconds: 0 };
+try { const saved = JSON.parse(fs.readFileSync(USAGE_FILE, 'utf8')); if (saved.month === usage.month && Number.isFinite(saved.seconds)) usage = saved; } catch {}
+const liveClients = new Set();
+let lastTick = Date.now();
+function saveUsage() { try { fs.writeFileSync(USAGE_FILE, JSON.stringify(usage)); } catch {} }
+function usageSnapshot() { const hours = usage.seconds / 3600; return { month: usage.month, hours: Math.round(hours * 100) / 100, limitHours: USAGE_LIMIT_HOURS, exceeded: hours >= USAGE_LIMIT_HOURS, live: liveClients.size }; }
+setInterval(() => {
+  const now = Date.now(); const elapsed = (now - lastTick) / 1000; lastTick = now;
+  if (usage.month !== monthKey()) usage = { month: monthKey(), seconds: 0 };
+  if (liveClients.size) { usage.seconds += elapsed * liveClients.size; saveUsage(); }
+}, 10000).unref();
 
 const mime = {
   '.html': 'text/html; charset=utf-8',
@@ -33,63 +38,9 @@ const mime = {
 
 function sendJson(res, status, data, headers = {}) {
   const body = JSON.stringify(data);
-  res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store',
-    ...headers
-  });
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
   res.end(body);
 }
-
-function writeAudit(event, details = {}) {
-  const entry = { timestamp: new Date().toISOString(), event, ...details };
-  try { fs.appendFileSync(AUDIT_LOG_FILE, `${JSON.stringify(entry)}\n`, { encoding: 'utf8', mode: 0o600 }); } catch (error) { console.error(`[audit] could not write log: ${error.message}`); }
-}
-function requestFingerprint(req) { return crypto.createHash('sha256').update(req.socket.remoteAddress || 'unknown').digest('hex').slice(0, 12); }
-function auditRequest(req, event, details = {}) { writeAudit(event, { ipHash: requestFingerprint(req), ...details }); }
-function auditSession(session, event, details = {}) { writeAudit(event, { ipHash: session.ipHash, ...details }); }
-
-function createPasswordRecord(password) {
-  const salt = crypto.randomBytes(16).toString('hex');
-  return { salt, hash: crypto.scryptSync(password, salt, 64).toString('hex') };
-}
-function loadPasswordRecord() {
-  if (process.env.SHUTTLECAST_ADMIN_PASSWORD) return createPasswordRecord(process.env.SHUTTLECAST_ADMIN_PASSWORD);
-  try { const record = JSON.parse(fs.readFileSync(AUTH_STATE_FILE, 'utf8')); if (record?.salt && record?.hash) return record; } catch {}
-  return null;
-}
-function savePasswordRecord() {
-  if (process.env.SHUTTLECAST_ADMIN_PASSWORD) return;
-  try { fs.writeFileSync(AUTH_STATE_FILE, JSON.stringify(passwordRecord), { encoding: 'utf8', mode: 0o600 }); } catch (error) { console.error(`[auth] could not persist password hash: ${error.message}`); }
-}
-function verifyPassword(password, record) {
-  if (!record || typeof password !== 'string') return false;
-  const expected = Buffer.from(record.hash, 'hex');
-  const actual = crypto.scryptSync(password, record.salt, expected.length);
-  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
-}
-function verifyOwnerSecret(secret) {
-  if (typeof secret !== 'string') return false;
-  const expected = Buffer.from(OWNER_SECRET_CODE, 'utf8');
-  const actual = Buffer.from(secret, 'utf8');
-  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
-}
-function validPassword(password) { return typeof password === 'string' && password.length >= PASSWORD_MIN_LENGTH && password.length <= 128; }
-function parseCookies(req) {
-  return Object.fromEntries((req.headers.cookie || '').split(';').map(part => part.trim().split('=')) .filter(pair => pair.length === 2).map(([key, ...value]) => [key, decodeURIComponent(value.join('='))]));
-}
-function currentAuthSession(req) {
-  const token = parseCookies(req)[AUTH_COOKIE]; const session = token && authSessions.get(token);
-  if (!session) return null;
-  if (session.expiresAt <= Date.now()) { authSessions.delete(token); return null; }
-  return { token, ...session };
-}
-function setAuthCookie(res, token) { res.setHeader('Set-Cookie', `${AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${AUTH_TTL_MS / 1000}`); }
-function clearAuthCookie(res) { res.setHeader('Set-Cookie', `${AUTH_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0`); }
-function issueAuthSession(res) { const token = crypto.randomBytes(32).toString('hex'); authSessions.set(token, { createdAt: Date.now(), expiresAt: Date.now() + AUTH_TTL_MS }); setAuthCookie(res, token); }
-function loginRateLimited(req) { const ip = req.socket.remoteAddress || 'unknown'; const record = loginFailures.get(ip); if (!record || record.resetAt <= Date.now()) return false; return record.count >= 5; }
-function registerLoginFailure(req) { const ip = req.socket.remoteAddress || 'unknown'; const record = loginFailures.get(ip); if (!record || record.resetAt <= Date.now()) loginFailures.set(ip, { count: 1, resetAt: Date.now() + 15 * 60 * 1000 }); else record.count += 1; }
-function clearLoginFailures(req) { loginFailures.delete(req.socket.remoteAddress || 'unknown'); }
 
 function readJson(req) {
   return new Promise((resolve, reject) => {
@@ -106,237 +57,152 @@ function readJson(req) {
   });
 }
 
-function safeRtmpUrl(value) {
-  if (typeof value !== 'string') return '';
-  const url = value.trim();
-  if (!/^rtmps?:\/\//i.test(url)) return '';
-  if (url.length > 600 || /[\r\n]/.test(url)) return '';
-  return url;
+// ---------- ICE servers ----------
+// STUN always. TURN (needed when the phone is on mobile data) from either:
+//  - Cloudflare Realtime TURN: TURN_KEY_ID + TURN_KEY_API_TOKEN (short-lived credentials generated here)
+//  - any static TURN server: TURN_URL (comma separated) + TURN_USER + TURN_PASS
+let cfCache = { at: 0, servers: null };
+async function cloudflareIce() {
+  const id = process.env.TURN_KEY_ID, token = process.env.TURN_KEY_API_TOKEN;
+  if (!id || !token) return null;
+  if (cfCache.servers && Date.now() - cfCache.at < 3600 * 1000) return cfCache.servers;
+  try {
+    const response = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(id)}/credentials/generate-ice-servers`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ttl: 86400 }), signal: AbortSignal.timeout(8000)
+    });
+    if (!response.ok) throw new Error(`cloudflare_turn_${response.status}`);
+    const data = await response.json();
+    const servers = (data.iceServers || []).map(server => ({ ...server, urls: [].concat(server.urls).filter(url => !/:53(\?|$)/.test(url)) }));
+    cfCache = { at: Date.now(), servers };
+    return servers;
+  } catch (error) { console.error('[ice] Cloudflare TURN failed:', error.message); return cfCache.servers; }
+}
+async function iceServers() {
+  const cf = await cloudflareIce();
+  if (cf?.length) return cf;
+  const servers = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+  const turn = (process.env.TURN_URL || '').split(',').map(entry => entry.trim()).filter(Boolean);
+  if (turn.length) servers.push({ urls: turn, username: process.env.TURN_USER || '', credential: process.env.TURN_PASS || '' });
+  return servers;
 }
 
-function makeTeeOutput(targets) {
-  return targets.map(url => `[f=flv:onfail=ignore]${url}`).join('|');
+// ---------- Signaling (long polling, no extra dependencies) ----------
+const validId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{6,64}$/.test(value);
+const validRoom = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(value);
+
+function deliver(client, message) {
+  client.queue.push(message);
+  flush(client);
 }
 
-function startRelay(targets) {
-  const args = [
-    '-hide_banner', '-loglevel', 'warning',
-    '-f', 'webm', '-i', 'pipe:0',
-    '-map', '0:v:0', '-map', '0:a:0?',
-    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-b:v', '6000k', '-maxrate', '6000k', '-bufsize', '12000k',
-    '-profile:v', 'high', '-level:v', '4.1', '-pix_fmt', 'yuv420p', '-r', '30', '-g', '60', '-keyint_min', '60',
-    '-c:a', 'aac', '-ar', '44100', '-b:a', '160k'
-  ];
-  if (targets.length === 1) args.push('-flvflags', 'no_duration_filesize', '-rtmp_live', 'live', '-f', 'flv', targets[0]);
-  else args.push('-f', 'tee', makeTeeOutput(targets));
-  return spawn(FFMPEG, args, { stdio: ['pipe', 'ignore', 'pipe'] });
+function flush(client) {
+  if (!client.waiter || !client.queue.length) return;
+  const res = client.waiter;
+  client.waiter = null;
+  clearTimeout(client.waitTimer);
+  const messages = client.queue.splice(0, client.queue.length);
+  sendJson(res, 200, { ok: true, messages });
 }
 
-function flushRelayBuffer(session) {
-  while (session.pendingChunks.length && session.process?.stdin?.writable) {
-    const chunk = session.pendingChunks.shift();
-    session.pendingBytes -= chunk.length;
-    session.process.stdin.write(chunk);
+function removeClient(roomName, id) {
+  const room = rooms.get(roomName);
+  const client = room?.get(id);
+  if (!client) return;
+  room.delete(id);
+  liveClients.delete(`${roomName}:${id}`);
+  clearTimeout(client.waitTimer);
+  if (client.waiter) sendJson(client.waiter, 200, { ok: true, messages: [] });
+  for (const other of room.values()) deliver(other, { type: 'peer-left', from: id, data: { role: client.role } });
+  if (!room.size) rooms.delete(roomName);
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [roomName, room] of rooms) {
+    for (const [id, client] of room) if (now - client.lastSeen > CLIENT_TIMEOUT_MS) removeClient(roomName, id);
   }
-}
+}, 10000).unref();
 
-function scheduleRelayReconnect(session, reason) {
-  if (session.closed || session.restarting || session.failed) return;
-  session.failed = true;
-  session.reconnecting = false;
-  session.lastError = reason;
-  auditSession(session, 'stream_relay_failed', { sessionId: session.id, reason });
-}
-
-function launchRelay(session, isReconnect = false) {
-  if (session.closed) return;
-  const relay = startRelay(session.targetUrls);
-  session.process = relay;
-  session.input = relay.stdin;
-  session.reconnecting = false;
-  session.failed = false;
-  let handledExit = false;
-  const handleRelayFailure = (reason) => {
-    if (handledExit || session.closed || session.restarting) return;
-    handledExit = true;
-    session.lastError = reason;
-    scheduleRelayReconnect(session, reason);
-  };
-  relay.on('error', error => handleRelayFailure(error.code || 'ffmpeg_error'));
-  relay.stdin.on('error', error => handleRelayFailure(error.code || 'relay_input_error'));
-  relay.stderr.on('data', chunk => {
-    const text = String(chunk).replace(/rtmps?:\/\/[^\s]+/gi, 'RTMP_TARGET').trim();
-    if (/error|failed|unable|reject|denied/i.test(text)) { session.lastError = text.slice(-500); console.error(`[relay ${session.id}] ${text}`); }
-  });
-  relay.on('close', (code, signal) => {
-    if (session.closed) return;
-    const reason = session.lastError || `ffmpeg_exit_${code ?? 'unknown'}${signal ? `_${signal}` : ''}`;
-    handleRelayFailure(reason);
-  });
-  if (isReconnect) auditSession(session, 'stream_reconnect_started', { sessionId: session.id, attempt: session.reconnectAttempts });
-  clearTimeout(session.stableTimer);
-  session.stableTimer = setTimeout(() => { session.reconnectAttempts = 0; session.restartAttempts = 0; }, 10000);
-  flushRelayBuffer(session);
-}
-
-function restartRelay(session) {
-  return new Promise(resolve => {
-    if (!session || session.closed || session.restarting || session.restartAttempts >= MAX_RECONNECT_ATTEMPTS) return resolve(false);
-    session.restarting = true;
-    session.restartAttempts += 1;
-    session.reconnecting = true;
-    session.failed = false;
-    session.lastError = null;
-    session.generation += 1;
-    session.pendingChunks = [];
-    session.pendingBytes = 0;
-    const previous = session.process;
-    let started = false;
-    const start = () => {
-      if (started || session.closed) return;
-      started = true;
-      session.restarting = false;
-      session.reconnecting = false;
-      launchRelay(session, true);
-      resolve(true);
-    };
-    if (!previous || previous.exitCode !== null) return start();
-    previous.once('close', start);
-    try { previous.stdin.destroy(); } catch {}
-    try { previous.kill('SIGTERM'); } catch {}
-    setTimeout(start, 700);
-  });
-}
-
-function stopSession(session) {
-  if (!session) return;
-  session.closed = true;
-  session.reconnecting = false;
-  clearTimeout(session.reconnectTimer);
-  clearTimeout(session.stableTimer);
-  try { session.input.end(); } catch {}
-  const killTimer = setTimeout(() => {
-    try { session.process.kill('SIGKILL'); } catch {}
-  }, 2500);
-  session.process?.once('close', () => clearTimeout(killTimer));
-  sessions.delete(session.id);
-  auditSession(session, 'stream_stopped', { sessionId: session.id });
-}
-
-function writeRelayChunk(session, chunk) {
-  if (session.process?.stdin?.writable && !session.reconnecting) return session.process.stdin.write(chunk);
-  const buffered = Buffer.from(chunk);
-  session.pendingChunks.push(buffered);
-  session.pendingBytes += buffered.length;
-  while (session.pendingBytes > MAX_RECONNECT_BUFFER_BYTES && session.pendingChunks.length) {
-    session.pendingBytes -= session.pendingChunks.shift().length;
-    session.bufferDrops = (session.bufferDrops || 0) + 1;
+async function signalJoin(req, res) {
+  const body = await readJson(req);
+  const { room: roomName, id, role } = body;
+  if (!validRoom(roomName) || !validId(id) || !['phone', 'viewer'].includes(role)) return sendJson(res, 400, { ok: false, error: 'invalid_join' });
+  let room = rooms.get(roomName);
+  if (!room) {
+    if (rooms.size >= MAX_ROOMS) return sendJson(res, 429, { ok: false, error: 'too_many_rooms' });
+    room = new Map();
+    rooms.set(roomName, room);
   }
-  return true;
+  let client = room.get(id);
+  if (!client) {
+    if (room.size >= MAX_CLIENTS_PER_ROOM) return sendJson(res, 429, { ok: false, error: 'room_full' });
+    client = { id, role, queue: [], waiter: null, waitTimer: null, lastSeen: Date.now() };
+    const peers = [...room.values()].map(c => ({ id: c.id, role: c.role }));
+    room.set(id, client);
+    for (const other of room.values()) if (other.id !== id) deliver(other, { type: 'peer-joined', from: id, data: { role } });
+    return sendJson(res, 200, { ok: true, peers });
+  }
+  client.lastSeen = Date.now();
+  const peers = [...room.values()].filter(c => c.id !== id).map(c => ({ id: c.id, role: c.role }));
+  return sendJson(res, 200, { ok: true, peers });
 }
 
+function signalPoll(req, res, url) {
+  const roomName = url.searchParams.get('room');
+  const id = url.searchParams.get('id');
+  const client = validRoom(roomName) && validId(id) ? rooms.get(roomName)?.get(id) : null;
+  if (!client) return sendJson(res, 404, { ok: false, error: 'not_joined' });
+  client.lastSeen = Date.now();
+  if (client.waiter) sendJson(client.waiter, 200, { ok: true, messages: [] });
+  clearTimeout(client.waitTimer);
+  client.waiter = res;
+  res.on('close', () => { if (client.waiter === res) { client.waiter = null; clearTimeout(client.waitTimer); } });
+  if (client.queue.length) return flush(client);
+  client.waitTimer = setTimeout(() => {
+    if (client.waiter !== res) return;
+    client.waiter = null;
+    client.lastSeen = Date.now();
+    sendJson(res, 200, { ok: true, messages: [] });
+  }, POLL_HOLD_MS);
+}
+
+async function signalSend(req, res) {
+  const body = await readJson(req);
+  const { room: roomName, id, to, type, data } = body;
+  if (!validRoom(roomName) || !validId(id) || !validId(to) || typeof type !== 'string' || type.length > 30) return sendJson(res, 400, { ok: false, error: 'invalid_send' });
+  const room = rooms.get(roomName);
+  const sender = room?.get(id);
+  if (!sender) return sendJson(res, 404, { ok: false, error: 'not_joined' });
+  sender.lastSeen = Date.now();
+  const target = room.get(to);
+  if (!target) return sendJson(res, 404, { ok: false, error: 'peer_not_found' });
+  if (sender.role === 'phone') { if (type === 'offer') liveClients.add(`${roomName}:${id}`); else if (type === 'live-stop') liveClients.delete(`${roomName}:${id}`); }
+  deliver(target, { type, from: id, data });
+  return sendJson(res, 200, { ok: true });
+}
+
+async function signalLeave(req, res) {
+  const body = await readJson(req).catch(() => ({}));
+  if (validRoom(body.room) && validId(body.id)) removeClient(body.room, body.id);
+  return sendJson(res, 200, { ok: true });
+}
 
 function routeApi(req, res, url) {
-  if (req.method === 'GET' && url.pathname === '/api/auth/status') {
-    return sendJson(res, 200, { ok: true, setupRequired: !passwordRecord, authenticated: Boolean(currentAuthSession(req)) });
-  }
-  if (req.method === 'POST' && url.pathname === '/api/auth/setup') {
-    return readJson(req).then(body => {
-      if (passwordRecord) return sendJson(res, 409, { ok: false, error: 'ตั้งรหัสผ่านแล้ว กรุณาเข้าสู่ระบบ' });
-      if (!validPassword(body.password)) return sendJson(res, 400, { ok: false, error: `รหัสผ่านต้องมี ${PASSWORD_MIN_LENGTH}-${128} ตัวอักษร` });
-      passwordRecord = createPasswordRecord(body.password); savePasswordRecord(); issueAuthSession(res); auditRequest(req, 'auth_setup_completed'); return sendJson(res, 200, { ok: true, authenticated: true });
-    }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'setup_failed' }));
-  }
-  if (req.method === 'POST' && url.pathname === '/api/auth/login') {
-    return readJson(req).then(body => {
-      if (loginRateLimited(req)) { auditRequest(req, 'auth_login_rate_limited'); return sendJson(res, 429, { ok: false, error: 'ลองรหัสผ่านผิดหลายครั้ง กรุณารอ 15 นาที' }); }
-      if (!passwordRecord || !verifyPassword(body.password, passwordRecord)) { registerLoginFailure(req); auditRequest(req, 'auth_login_failed'); return sendJson(res, 401, { ok: false, error: 'รหัสผ่านไม่ถูกต้อง' }); }
-      clearLoginFailures(req); issueAuthSession(res); auditRequest(req, 'auth_login_succeeded'); return sendJson(res, 200, { ok: true, authenticated: true });
-    }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'login_failed' }));
-  }
-  if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
-    const token = currentAuthSession(req)?.token; if (token) authSessions.delete(token); clearAuthCookie(res); auditRequest(req, 'auth_logout'); return sendJson(res, 200, { ok: true });
-  }
-  if (req.method === 'POST' && url.pathname === '/api/auth/change-password') {
-    if (!currentAuthSession(req)) return sendJson(res, 401, { ok: false, error: 'ต้องเข้าสู่ระบบก่อน' });
-    return readJson(req).then(body => {
-      if (!verifyOwnerSecret(body.ownerSecret)) { auditRequest(req, 'auth_password_change_secret_failed'); return sendJson(res, 403, { ok: false, error: 'Secret Code ยืนยันความเป็นเจ้าของไม่ถูกต้อง' }); }
-      if (!validPassword(body.newPassword)) return sendJson(res, 400, { ok: false, error: `รหัสผ่านใหม่ต้องมี ${PASSWORD_MIN_LENGTH}-${128} ตัวอักษร` });
-      passwordRecord = createPasswordRecord(body.newPassword); savePasswordRecord(); authSessions.clear(); issueAuthSession(res); auditRequest(req, 'auth_password_changed'); return sendJson(res, 200, { ok: true, authenticated: true });
-    }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'change_password_failed' }));
-  }
-  if (req.method === 'POST' && url.pathname === '/api/auth/reset-password') {
-    return readJson(req).then(body => {
-      if (!verifyOwnerSecret(body.ownerSecret)) { auditRequest(req, 'auth_password_reset_secret_failed'); return sendJson(res, 403, { ok: false, error: 'Secret Code ผู้ดูแลระบบไม่ถูกต้อง' }); }
-      if (!validPassword(body.newPassword)) return sendJson(res, 400, { ok: false, error: `รหัสผ่านใหม่ต้องมี ${PASSWORD_MIN_LENGTH}-${128} ตัวอักษร` });
-      passwordRecord = createPasswordRecord(body.newPassword); savePasswordRecord(); authSessions.clear(); issueAuthSession(res); auditRequest(req, 'auth_password_reset'); return sendJson(res, 200, { ok: true, authenticated: true });
-    }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'reset_password_failed' }));
-  }
-  if (req.method === 'GET' && url.pathname === '/api/health') {
-    const ffmpeg = spawnSync(FFMPEG, ['-version'], { stdio: 'ignore' }).status === 0;
-    return sendJson(res, ffmpeg ? 200 : 503, { ok: ffmpeg, service: 'shuttlecast-relay', ffmpeg });
-  }
-
-  if (url.pathname.startsWith('/api/stream/') && !currentAuthSession(req)) return sendJson(res, 401, { ok: false, error: 'ต้องเข้าสู่ระบบก่อนใช้งานสตรีม' });
-
-  if (req.method === 'POST' && url.pathname === '/api/stream/start') {
-    return readJson(req).then(body => {
-      const targets = [body.facebook, body.youtube].map(safeRtmpUrl).filter(Boolean);
-      if (!targets.length) return sendJson(res, 400, { ok: false, error: 'ต้องมี RTMP URL อย่างน้อยหนึ่งปลายทาง' });
-      if (targets.length > 2) return sendJson(res, 400, { ok: false, error: 'รองรับสูงสุดสองปลายทาง' });
-      const id = crypto.randomUUID();
-      const session = { id, targetUrls: targets, targets: targets.length, closed: false, failed: false, restarting: false, reconnecting: false, reconnectAttempts: 0, restartAttempts: 0, generation: 0, pendingChunks: [], pendingBytes: 0, startedAt: Date.now(), ipHash: requestFingerprint(req) };
-      launchRelay(session);
-      sessions.set(id, session);
-      auditRequest(req, 'stream_started', { sessionId: id, targets: targets.length });
-      return sendJson(res, 200, { ok: true, sessionId: id, targets: targets.length, status: 'relay_ready' });
-    }).catch(error => sendJson(res, 400, { ok: false, error: error.message || 'start_failed' }));
-  }
-
-  const statusMatch = url.pathname.match(/^\/api\/stream\/([^/]+)\/status$/);
-  if (req.method === 'GET' && statusMatch) {
-    const session = sessions.get(statusMatch[1]);
-    if (!session) return sendJson(res, 404, { ok: false, error: 'session_not_found' });
-    return sendJson(res, 200, { ok: true, running: !session.closed && !session.failed && !session.reconnecting, reconnecting: session.reconnecting, failed: session.failed, reconnectAttempts: session.reconnectAttempts, bufferedBytes: session.pendingBytes, bufferDrops: session.bufferDrops || 0, targets: session.targets, lastError: session.failed ? session.lastError || null : null });
-  }
-
-  const restartMatch = url.pathname.match(/^\/api\/stream\/([^/]+)\/restart$/);
-  if (req.method === 'POST' && restartMatch) {
-    const session = sessions.get(restartMatch[1]);
-    if (!session || session.closed) return sendJson(res, 404, { ok: false, error: 'session_not_found' });
-    return restartRelay(session).then(ok => sendJson(res, ok ? 200 : 409, { ok, generation: session.generation, error: ok ? undefined : 'relay_restart_limit' }));
-  }
-
-  const chunkMatch = url.pathname.match(/^\/api\/stream\/([^/]+)\/chunk$/);
-  if (req.method === 'POST' && chunkMatch) {
-    const session = sessions.get(chunkMatch[1]);
-    if (!session || session.closed) return sendJson(res, 404, { ok: false, error: 'session_not_found' });
-    if (session.failed) return sendJson(res, 503, { ok: false, error: 'relay_reconnect_failed' });
-    const generation = Number(req.headers['x-stream-generation'] ?? 0);
-    if (!Number.isInteger(generation) || generation !== session.generation) {
-      req.on('data', () => {});
-      req.on('end', () => sendJson(res, 409, { ok: false, error: 'stale_stream_chunk' }));
-      return;
-    }
-    req.on('data', chunk => { if (!session.closed) writeRelayChunk(session, chunk); });
-    req.on('end', () => sendJson(res, 200, { ok: true }));
-    req.on('error', () => { stopSession(session); });
-    return;
-  }
-
-  const stopMatch = url.pathname.match(/^\/api\/stream\/([^/]+)\/stop$/);
-  if (req.method === 'POST' && stopMatch) {
-    const session = sessions.get(stopMatch[1]);
-    if (session) stopSession(session);
-    return sendJson(res, 200, { ok: true });
-  }
-
+  const fail = error => sendJson(res, 400, { ok: false, error: error.message || 'bad_request' });
+  if (req.method === 'GET' && url.pathname === '/api/health') return sendJson(res, 200, { ok: true, service: 'shuttlecast-signal', rooms: rooms.size, turn: Boolean((process.env.TURN_KEY_ID && process.env.TURN_KEY_API_TOKEN) || process.env.TURN_URL) });
+  if (req.method === 'GET' && url.pathname === '/api/ice') return iceServers().then(servers => sendJson(res, 200, { ok: true, iceServers: servers }));
+  if (req.method === 'GET' && url.pathname === '/api/usage') return sendJson(res, 200, { ok: true, ...usageSnapshot() });
+  if (req.method === 'POST' && url.pathname === '/api/signal/join') return signalJoin(req, res).catch(fail);
+  if (req.method === 'GET' && url.pathname === '/api/signal/poll') return signalPoll(req, res, url);
+  if (req.method === 'POST' && url.pathname === '/api/signal/send') return signalSend(req, res).catch(fail);
+  if (req.method === 'POST' && url.pathname === '/api/signal/leave') return signalLeave(req, res);
   return false;
 }
 
 function serveStatic(req, res, url) {
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === '/') pathname = '/index.html';
+  if (pathname === '/live') pathname = '/live.html';
   const filePath = path.normalize(path.join(PUBLIC_DIR, pathname));
   if (!filePath.startsWith(PUBLIC_DIR)) return sendJson(res, 403, { error: 'forbidden' });
   fs.readFile(filePath, (error, data) => {
@@ -347,7 +213,7 @@ function serveStatic(req, res, url) {
     const ext = path.extname(filePath).toLowerCase();
     res.writeHead(200, {
       'Content-Type': mime[ext] || 'application/octet-stream',
-      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600',
+      'Cache-Control': ext === '.html' || ext === '.js' ? 'no-cache' : 'public, max-age=3600',
       'Permissions-Policy': 'camera=(self), microphone=(self)'
     });
     res.end(data);
@@ -359,13 +225,11 @@ const server = http.createServer((req, res) => {
   if (url.pathname.startsWith('/api/')) {
     const handled = routeApi(req, res, url);
     if (handled !== false) return;
+    return sendJson(res, 404, { ok: false, error: 'not_found' });
   }
   serveStatic(req, res, url);
 });
 
 server.listen(PORT, '0.0.0.0', () => console.log(`ShuttleCast listening on 0.0.0.0:${PORT}`));
 
-process.on('SIGTERM', () => {
-  for (const session of sessions.values()) stopSession(session);
-  server.close(() => process.exit(0));
-});
+process.on('SIGTERM', () => { saveUsage(); server.close(() => process.exit(0)); });
